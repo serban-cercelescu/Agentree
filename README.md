@@ -57,7 +57,7 @@ a new session file.
 Requirements: [Node.js](https://nodejs.org) 20 or later.
 
 ```sh
-git clone https://github.com/scercelescu-QNT/agentree.git
+git clone https://github.com/serban-cercelescu/Agentree.git
 cd agentree
 npm install
 npm run build
