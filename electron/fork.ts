@@ -43,16 +43,40 @@ export function forkAt(sessionId: SessionId, nodeId: string): ForkResult {
     // Reconstructed from the message queue — there is no record to resume at.
     return { ok: false, error: "This turn was delivered mid-turn and has no transcript record." };
   }
+  if (node.midTurn) {
+    // A queued_command attachment is a real record, but the resume loader
+    // indexes only messages — anchoring here gets "No message found". The
+    // message is not lost: any fork below this point carries it.
+    return {
+      ok: false,
+      error:
+        "This mid-turn message can't anchor a resume itself. Fork the turn after it — resumes that pass this point retain the message.",
+    };
+  }
+  if (node.preCompact) {
+    return {
+      ok: false,
+      error:
+        "This turn predates the session's last /compact. Claude Code only indexes messages after the compaction, so it cannot resume here.",
+    };
+  }
 
   // Anchor on the turn's LAST record. Anchoring on `node.id` would cut inside a
   // reply — mid-way through its thinking/text/tool_use blocks.
   const leafUuid = node.lastRawId ?? node.id;
+  if (leafUuid.startsWith("queued:")) {
+    // Belt and braces: a synthetic interjection id must never reach the
+    // command line — the CLI has no record to resume at.
+    return { ok: false, error: "This turn was delivered mid-turn and has no transcript record." };
+  }
 
-  // A mid-turn interjection ("btw …" while Claude is working) reaches the
-  // model but is written to no transcript record — so a resume whose prefix
-  // crosses one silently loses that instruction, which reads as the fork
-  // "behaving weirdly". Nothing read-only can restore it; the honest fix is
-  // to say so up front.
+  // A queue-op-reconstructed interjection (old transcripts, hollow nodes with
+  // synthetic "queued:" ids) reaches the model but is written to no transcript
+  // record — a resume whose prefix crosses one silently loses that
+  // instruction, which reads as the fork "behaving weirdly". Nothing
+  // read-only can restore it; the honest fix is to say so up front.
+  // Attachment-backed mid-turn messages (`midTurn`) are NOT warned about:
+  // verified against the live CLI, resumes that pass them retain them.
   let crossesInjected = false;
   {
     const byId = new Map(session.nodes.map((n) => [n.id, n]));

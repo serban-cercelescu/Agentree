@@ -400,3 +400,12 @@ button.ghost:hover, a.ghost:hover { border-color: var(--line); color: var(--fg);
 .provider-chip.claude { color: #c96442; border-color: #c9644255; background: #c9644214; }
 .provider-chip.codex { color: #10a37f; border-color: #10a37f55; background: #10a37f14; }
 .provider-chip.copilot { color: #6c9bd1; border-color: #6c9bd155; background: #6c9bd114; }
+
+/* Whole-prefix reading view inside the node panel. */
+.prefix-toggle { margin-bottom: 8px; }
+.prefix-toggle button.ghost { font-size: 12px; padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; background: none; color: var(--muted); cursor: pointer; }
+.prefix-toggle button.ghost:hover { border-color: var(--accent); color: var(--fg); }
+.prefix-turn { border-left: 3px solid var(--line); padding: 4px 0 4px 12px; margin-bottom: 14px; }
+.prefix-turn.user { border-left-color: var(--user); }
+.prefix-turn.assistant { border-left-color: var(--assistant); }
+.prefix-role { margin-bottom: 4px; }

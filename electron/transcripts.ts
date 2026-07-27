@@ -18,6 +18,14 @@ interface RawRecord {
   type?: string;
   uuid?: string;
   parentUuid?: string | null;
+  /**
+   * A `/compact` writes a `system/compact_boundary` record with
+   * `parentUuid: null` and the pre-compaction tip here — following it keeps a
+   * compacted session one connected tree instead of a forest.
+   */
+  logicalParentUuid?: string | null;
+  /** `system` records only, e.g. "compact_boundary". */
+  subtype?: string;
   timestamp?: string;
   isSidechain?: boolean;
   cwd?: string;
@@ -27,6 +35,20 @@ interface RawRecord {
   content?: unknown;
   /** `custom-title` only: the name set with `/rename`. */
   customTitle?: string;
+  /**
+   * `attachment` records. `type: "queued_command"` ones are the harness's OWN
+   * splice of a delivered mid-turn message into the lineage — real uuid, real
+   * position — and are preferred over reconstructing from queue-operations.
+   */
+  attachment?: {
+    type?: string;
+    prompt?: string;
+    /** "prompt" for the user's own /btw messages, "task-notification" for plumbing. */
+    commandMode?: string;
+    origin?: { kind?: string } | null;
+  };
+  /** Agentree-internal marker set when projecting a queued_command attachment. */
+  agentreeMidTurn?: boolean;
   message?: {
     /** API message id. Shared by every record belonging to one assistant turn. */
     id?: string;
@@ -44,6 +66,17 @@ const ESC = String.fromCharCode(27);
 const ANSI = new RegExp(`${ESC}\\[[0-9;?]*[ -/]*[@-~]`, "g");
 /** Boilerplate addressed to the model, never written or read by the user. */
 const DROP_BLOCKS = /<(local-command-caveat|system-reminder)>[\s\S]*?<\/\1>/g;
+/**
+ * A reminder can OPEN in one record and CLOSE in the next; when adjacent
+ * records merge, the rejoined pair is caught by DROP_BLOCKS — but at a branch
+ * point the merge doesn't happen and each half survives alone. After the
+ * paired pass, an unpaired opener runs to end-of-record and an unpaired closer
+ * back to its start, so drop those spans. The backtick guard spares prose
+ * discussing the tag (`` `<system-reminder>` ``), which this repo's own
+ * sessions are full of.
+ */
+const DROP_OPEN_TAIL = /(?<!`)<(?:local-command-caveat|system-reminder)>[\s\S]*$/;
+const DROP_CLOSE_HEAD = /^[\s\S]*?<\/(?:local-command-caveat|system-reminder)>(?!`)/;
 const WRAPPERS = [
   "local-command-stdout",
   "local-command-stderr",
@@ -107,6 +140,8 @@ function cleanText(s: string): { text: string; synthetic: boolean } {
   let out = s
     .replace(ANSI, "")
     .replace(DROP_BLOCKS, "")
+    .replace(DROP_OPEN_TAIL, "")
+    .replace(DROP_CLOSE_HEAD, "")
     .replace(SYSTEM_NOTIF, "")
     .replace(TASK_NOTIF, (_m, inner: string) => rebuildTaskNotification(inner))
     .replace(BARE_NOTIF, (m) => rebuildTaskNotification(m));
@@ -259,12 +294,22 @@ export function mergeSameRoleRuns(nodes: TurnNode[]): TurnNode[] {
       model: last.model ?? head.model,
       stopReason: last.stopReason ?? null,
       absorbedIds: parts.slice(1).map((p) => p.id),
-      // The merged turn ends where its LAST part ends — that's the record a
-      // fork has to resume after.
-      lastRawId: last.lastRawId ?? last.id,
+      // The merged turn ends where its last ANCHORABLE part ends — that's the
+      // record a fork has to resume after. An injected tail has no transcript
+      // record at all, and a mid-turn attachment's uuid is a record the CLI's
+      // resume loader doesn't index; either one becoming the anchor produces
+      // a --resume-session-at the CLI can only reject.
+      ...(() => {
+        const lastReal = [...parts].reverse().find((p) => !p.injected && !p.midTurn);
+        return {
+          lastRawId: lastReal ? lastReal.lastRawId ?? lastReal.id : undefined,
+          preCompact: lastReal?.preCompact,
+        };
+      })(),
       // Only wholly-synthetic runs are unforkable; one real record in the run
       // gives the merged turn a resume point.
       injected: parts.every((p) => p.injected) || undefined,
+      midTurn: parts.every((p) => p.midTurn) || undefined,
     });
   }
 
@@ -410,6 +455,11 @@ function parseFile(file: string): Parsed {
   const queued: Interjection[] = [];
   /** Name set with `/rename`. Last one wins — a session can be renamed twice. */
   let customTitle = "";
+  /**
+   * Everything recorded before the LAST `/compact` boundary. The CLI's loader
+   * only indexes messages after it, so these uuids cannot anchor a fork.
+   */
+  const preCompact = new Set<string>();
 
   for (const line of raw.split("\n")) {
     if (!line.trim()) continue;
@@ -432,6 +482,17 @@ function parseFile(file: string): Parsed {
     }
 
     if (rec.type === "queue-operation" && rec.operation === "enqueue" && typeof rec.content === "string") {
+      // Background-task notifications ride the SAME queue as the user's own
+      // mid-turn (`/btw`) messages: the harness enqueues the notification text
+      // and `remove`s it when delivered into the running turn. Splicing those
+      // in would show system plumbing as hollow "user" turns the user never
+      // typed — the very confusion this feature exists to avoid. Only entries
+      // that BEGIN as a notification are dropped; a real message that quotes
+      // one (e.g. "btw, <task-id>… renders weirdly") starts with prose and is
+      // kept.
+      if (/^\s*(\[SYSTEM NOTIFICATION - NOT USER INPUT\]|<task-notification>)/.test(rec.content)) {
+        continue;
+      }
       queued.push({
         text: rec.content,
         timestamp: rec.timestamp,
@@ -445,12 +506,45 @@ function parseFile(file: string): Parsed {
     if (!rec.uuid) continue;
     // Lineage is recorded for EVERY record, displayable or not, so that
     // resolveParent can re-link children across whatever we filter out.
-    parentOf.set(rec.uuid, rec.parentUuid ?? null);
+    // `logicalParentUuid` bridges a compact boundary's physical null parent —
+    // without it a compacted session falls apart into a forest.
+    parentOf.set(rec.uuid, rec.parentUuid ?? rec.logicalParentUuid ?? null);
     seq.push(rec.uuid);
 
-    if (rec.type === "user" || rec.type === "assistant") records.push(rec);
+    if (rec.type === "system" && rec.subtype === "compact_boundary") {
+      for (const u of seq) preCompact.add(u);
+    }
+
+    if (rec.type === "user" || rec.type === "assistant") {
+      records.push(rec);
+    } else if (
+      rec.type === "attachment" &&
+      rec.attachment?.type === "queued_command" &&
+      typeof rec.attachment.prompt === "string" &&
+      rec.attachment.origin?.kind === "human" &&
+      rec.attachment.commandMode !== "task-notification"
+    ) {
+      // The harness's own record of a delivered mid-turn message: project it
+      // as a user turn. It has a real uuid at the real delivery point, and —
+      // verified against the live CLI — any fork of a LATER turn retains it.
+      // (Task notifications ride the same attachment type with
+      // `commandMode: "task-notification"` and a null origin; those are
+      // plumbing and are left out of the tree.)
+      records.push({
+        type: "user",
+        uuid: rec.uuid,
+        parentUuid: rec.parentUuid,
+        timestamp: rec.timestamp,
+        isSidechain: rec.isSidechain,
+        message: { role: "user", content: rec.attachment.prompt },
+        agentreeMidTurn: true,
+      });
+    }
   }
 
+  // Queue-operation reconstruction covers only transcripts old enough to lack
+  // queued_command attachments; spliceInterjections' content dedup (`said`)
+  // sees the attachment-projected user records above and drops duplicates.
   spliceInterjections(queued, records, parentOf, seq);
 
   // Pass 1b: coalesce each assistant turn back into a single node.
@@ -555,6 +649,11 @@ function parseFile(file: string): Parsed {
       isSidechain: head.isSidechain || undefined,
       // No transcript record backs this turn — see spliceInterjections.
       injected: head.uuid!.startsWith(INJECTED_PREFIX) || undefined,
+      // Backed by a queued_command attachment — real record, but not a valid
+      // resume anchor itself.
+      midTurn: head.agentreeMidTurn || undefined,
+      // Anchor predates the last /compact; the CLI cannot resume there.
+      preCompact: preCompact.has(last.uuid!) || undefined,
       timestamp: head.timestamp ? Date.parse(head.timestamp) : 0,
       usage: u
         ? {

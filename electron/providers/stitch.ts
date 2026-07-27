@@ -40,8 +40,11 @@ export function stitchFamily(members: FamilyMember[]): TurnNode[] {
   /** sessionId -> tree node id standing in for each position of its chain. */
   const chainIds = new Map<string, string[]>();
 
-  // Root contributes its whole chain as-is (already linearly parented).
-  out.push(...root.nodes);
+  // Root contributes its whole chain. COPIES, not the originals: callers keep
+  // parsed node arrays in an mtime-keyed cache, and the downstream same-role
+  // merge rewrites parentIds in place — mutating cached nodes would make the
+  // second load of a session parse differently from the first.
+  out.push(...root.nodes.map((n) => ({ ...n })));
   chainIds.set(root.sessionId, root.nodes.map((n) => n.id));
 
   // Children in BFS order so a parent's chainIds always exist first. A child

@@ -46,9 +46,24 @@ export interface TurnNode {
   /**
    * Reconstructed from a queued message that was delivered into a running turn.
    * The model saw it, but Claude Code never wrote a transcript record for it —
-   * so it has no uuid of its own and cannot be a resume point.
+   * so it has no uuid of its own and cannot be a resume point. Modern CLIs
+   * record these as `queued_command` attachments instead (see `midTurn`); this
+   * flag survives only for transcripts predating that.
    */
   injected?: boolean;
+  /**
+   * A mid-turn ("/btw") message backed by a real `queued_command` attachment
+   * record. Unlike `injected`, the record IS in the lineage, so any fork of a
+   * LATER turn retains this message — but the attachment uuid itself is not a
+   * valid resume anchor, so the node cannot be forked at directly.
+   */
+  midTurn?: boolean;
+  /**
+   * This turn's resume anchor lies before the session's last `/compact`
+   * boundary. The CLI only indexes messages after the last compaction, so a
+   * fork here is impossible — the loader answers "No message found".
+   */
+  preCompact?: boolean;
   /**
    * Ids of turns folded into this node by the consecutive-assistant merge.
    * Kept so sidecar annotations written against an absorbed turn still resolve,

@@ -429,14 +429,41 @@ content.
   alpha mask. A naive "delete black pixels" would punch holes in the dark tree
   edges and node outlines of the artwork itself. Re-run it if `logo.png` changes.
 
+## Mid-turn messages (`/btw`) and `/compact`
+
+A message sent while Claude is working is recorded twice: as a uuid-less
+`queue-operation` pair, and — on current CLIs — as a `queued_command`
+**attachment** with a real uuid at the exact delivery point in the lineage.
+Task notifications ride the *same* queue and the same attachment type
+(`commandMode: "task-notification"`, null origin); naive splicing showed them
+as hollow "user" turns the user never typed, which was most of the observed
+"/btw weirdness".
+
+Agentree now prefers the attachment records (`origin.kind: "human"` only),
+falls back to queue-op reconstruction for old transcripts (deduped by
+content), and drops notifications from the tree entirely. Verified against
+the live CLI:
+
+- a fork of any turn **after** an attachment-backed mid-turn message retains
+  it — the resumed model can quote it back;
+- the attachment uuid itself is NOT a valid `--resume-session-at` anchor
+  ("No message found"), so those nodes explain themselves instead of forking;
+- old-style queue-op interjections have no record at all, so forks crossing
+  them still warn that the instruction is lost.
+
+`/compact` writes a `system/compact_boundary` record with `parentUuid: null`
+and the real predecessor in `logicalParentUuid` — without following that
+field a compacted session shatters into a forest. The resume loader only
+indexes messages after the LAST boundary, so forks of earlier turns fail;
+Agentree marks those turns `preCompact` and refuses with the reason.
+
+One more transcript reality: the harness does not persist every piece of
+in-turn assistant prose. If nothing was recorded between two mid-turn
+messages, they merge into one node — that is a faithful rendering of the
+file, not a parser bug.
+
 ## Known gaps
 
-- **`/btw` forks behave weirdly** — forks made around mid-turn side messages
-  come out wrong. Root cause found for one class: a message delivered while
-  Claude is working exists in NO transcript record, so a fork whose prefix
-  crosses it resumes *without* that instruction. The fork command now warns
-  when that happens; a read-only viewer can't do more. If other weirdness
-  remains, it needs a fresh repro.
 - Copilot sessions from before the `events.jsonl` format (older CLI versions)
   are not listed — their turns live only in the central SQLite mirror.
 - Copilot records no per-turn token usage, so the context/prompt numbers stay

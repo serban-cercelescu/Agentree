@@ -51,6 +51,11 @@ export function NodePanel() {
   const [forkFor, setForkFor] = useState<string | null>(null);
   const forkResult = forkFor === selected ? fork : null;
 
+  // Same pattern for the prefix view: it belongs to the turn it was opened on,
+  // so selecting another node falls back to that node's own text.
+  const [prefixFor, setPrefixFor] = useState<string | null>(null);
+  const showPrefix = prefixFor === selected;
+
   // Inferred once per session; every node's percentage shares it.
   const window_ = useMemo(() => inferWindow(session?.nodes ?? []), [session]);
 
@@ -153,6 +158,12 @@ export function NodePanel() {
                 Sent mid-turn; Claude Code wrote no record for it, so it can't be resumed at.
               </p>
             )}
+            {node.midTurn && !node.injected && (
+              <p className="muted small hint">
+                Sent mid-turn. Forks of any later turn keep this message; it just can't anchor
+                a resume itself.
+              </p>
+            )}
 
             <div className="panel-actions">
               <button
@@ -232,9 +243,32 @@ export function NodePanel() {
           ) : null}
 
           <section className="panel-block grow">
-            <div className="panel-body md">
-              <Markdown text={node.text} />
+            <div className="prefix-toggle">
+              <button
+                className="ghost"
+                title="Read the whole conversation from the root down to this turn"
+                onClick={() => setPrefixFor(showPrefix ? null : node.id)}
+              >
+                {showPrefix ? "show this turn only" : "view conversation up to here"}
+              </button>
             </div>
+            {showPrefix ? (
+              <div className="panel-body md prefix-view">
+                {pathToRoot(node.id, nodes).map((p) => (
+                  <div key={p.id} className={`prefix-turn ${p.role}`}>
+                    <div className="prefix-role muted small">
+                      {p.role}
+                      {p.injected || p.midTurn ? " · mid-turn" : ""} · {when(p.timestamp)}
+                    </div>
+                    <Markdown text={p.text} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="panel-body md">
+                <Markdown text={node.text} />
+              </div>
+            )}
           </section>
         </>
       )}

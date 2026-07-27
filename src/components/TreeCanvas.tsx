@@ -229,9 +229,10 @@ function Node({
         isSelected ? "selected" : "",
         isDead ? "dead" : "",
         n.isSidechain ? "sidechain" : "",
-        // Reconstructed from the message queue — drawn hollow, because it isn't
-        // a real transcript record and can't be resumed at.
-        n.injected ? "injected" : "",
+        // Mid-turn messages are drawn hollow: `injected` ones are reconstructed
+        // from the queue (no record, unresumable); `midTurn` ones are backed by
+        // a queued_command attachment (real record, retained by later forks).
+        n.injected || n.midTurn ? "injected" : "",
         isTip ? "tip" : "",
       ].join(" ")}
       transform={`translate(${v.x},${v.y})`}
@@ -322,6 +323,6 @@ function Tooltip({ v }: { v: VNode }) {
   const text =
     v.kind === "chain"
       ? `${v.nodes.length} linear turns — click to expand`
-      : `${v.node.injected ? "queued " : ""}${v.node.role}: ${shortLabel(v.node, 90)}`;
+      : `${v.node.injected || v.node.midTurn ? "mid-turn " : ""}${v.node.role}: ${shortLabel(v.node, 90)}`;
   return <div className="tree-tooltip">{text}</div>;
 }

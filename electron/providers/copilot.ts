@@ -247,7 +247,9 @@ function metaFor(fam: Family): SessionMeta | null {
   const rootParsed = parsed(rootMember.dir);
   if (!rootParsed || rootParsed.nodes.length === 0) return null;
 
-  const nodes = fam.members.length > 1 ? stitched(fam) : mergeSameRoleRuns(rootParsed.nodes);
+  // Always via stitched(): it copies nodes before the merge mutates them,
+  // protecting the parse cache. (A single-member family stitches to itself.)
+  const nodes = stitched(fam);
   let updatedAt = 0;
   for (const m of fam.members) {
     const p = parsed(m.dir);
