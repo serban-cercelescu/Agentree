@@ -89,10 +89,12 @@ export function NodePanel() {
 
         <div className="copy-row">
           <Copy value={meta.id} label="copy id" />
-          <Copy value={resumeCmd} label="copy resume command" />
+          <Copy value={resumeCmd} label="copy resume command (at tip)" />
         </div>
         <p className="muted small hint">
-          Sessions are per-directory; the command includes the <code>cd</code> for that.
+          Resumes at the session's last turn. Sessions are per-directory; the command includes
+          the <code>cd</code> for that. To branch from an earlier turn, select it and use
+          “⑂ fork after this turn”.
         </p>
       </section>
 
@@ -193,8 +195,9 @@ export function NodePanel() {
             {forkResult &&
               (forkResult.ok ? (
                 <div className="fork-result">
+                  <code className="path fork-cmd">{forkResult.command}</code>
                   <div className="copy-row">
-                    <Copy value={forkResult.command} label="copy resume command" />
+                    <Copy value={forkResult.command} label="⑂ copy fork command" />
                     <Copy value={forkResult.id} label="copy session id" />
                   </div>
                   <p className="muted small hint">

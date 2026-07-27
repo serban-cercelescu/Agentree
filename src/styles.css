@@ -245,6 +245,7 @@ button.ghost:hover, a.ghost:hover { border-color: var(--line); color: var(--fg);
   background: var(--panel-2); border: 1px solid var(--accent); border-radius: var(--radius);
 }
 .fork-result .copy-row { margin-top: 8px; }
+.fork-cmd { display: block; }
 .error-text { color: #d0503a; border-color: #d0503a; }
 
 .panel-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
