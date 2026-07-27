@@ -57,47 +57,28 @@ a new session file.
 Requirements: [Node.js](https://nodejs.org) 20 or later.
 
 ```sh
-git clone https://github.com/serban-cercelescu/Agentree.git
-cd agentree
-npm install
-npm run build
-npm start
+npm install -g serban-cercelescu/Agentree
 ```
 
-That's it — Agentree finds your sessions automatically. If a harness isn't
-installed, it's simply skipped.
-
-For development (hot reload):
+That's the whole install — npm clones the repo, builds it, and puts
+`agentree` on your PATH. Then:
 
 ```sh
-npm run dev
+agentree
 ```
 
-## Usage
+The app opens and finds your sessions automatically; harnesses that aren't
+installed are simply skipped. `agentree --foreground` keeps it attached to
+the terminal with logs.
 
-1. Launch the app. The welcome screen lists every conversation, newest first.
-   Use the directory rail or the search box to narrow it down.
-2. Click a conversation to open its tree. Drag to pan, scroll to zoom,
-   **fit** to re-frame. Click a chain pill to expand collapsed turns.
-3. Select a turn to read it in the side panel, then use
-   **⑂ fork after this turn** to get a resume command. Paste it into your
-   terminal — the new exchange appears in the tree as a branch, live.
+### From a clone
 
-## How it works
+```sh
+git clone https://github.com/serban-cercelescu/Agentree.git
+cd Agentree
+npm install        # installs dependencies and builds the app
+npm link           # optional: put `agentree` on your PATH
+agentree
+```
 
-Each harness stores transcripts differently — Claude Code writes a native
-DAG, Codex and Copilot write linear logs where a fork is a new file sharing a
-copied prefix. Agentree projects all of them onto one tree model and stitches
-fork families back together so a branched conversation always reads as a
-single tree. The full write-up, including the transcript formats and fork
-mechanics, is in [AGENTS.md](AGENTS.md).
-
-## Contributing
-
-Issues and pull requests are welcome. If a harness update changes a
-transcript format, an issue with a (redacted) sample of the new records is
-the fastest path to a fix.
-
-## License
-
-[MIT](LICENSE)
+`npm run dev` starts the hot-reload development setup.

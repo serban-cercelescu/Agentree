@@ -50,7 +50,24 @@ for y in range(H):
         else:
             op[x, y] = (*op[x, y][:3], 255)
 
-out.save(f"{OUT_DIR}/logo.png")
+def flatten_boundary(im):
+    """Repaint every non-opaque pixel to flat cream, keeping only its alpha.
+
+    Pillow resizes RGBA with premultiplied alpha, which drags boundary RGB
+    toward black — composited over a light page that reads as dark corner
+    fringes. The mask edge only ever blends cream against nothing, so the
+    correct straight-alpha RGB for every boundary pixel IS cream.
+    """
+    p = im.load()
+    w, h = im.size
+    for yy in range(h):
+        for xx in range(w):
+            a = p[xx, yy][3]
+            if a < 255:
+                p[xx, yy] = (*cream, a)
+    return im
+
+flatten_boundary(out).save(f"{OUT_DIR}/logo.png")
 for size in (512, 256, 128):
-    out.resize((size, size), Image.LANCZOS).save(f"{OUT_DIR}/logo-{size}.png")
+    flatten_boundary(out.resize((size, size), Image.LANCZOS)).save(f"{OUT_DIR}/logo-{size}.png")
 print(f"{W}x{H}, radius {radius}, fill rgb{cream} → {OUT_DIR}/")

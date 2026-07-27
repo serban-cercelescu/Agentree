@@ -10,27 +10,37 @@
     "url": "https://github.com/serban-cercelescu/Agentree.git"
   },
   "type": "module",
+  "bin": {
+    "agentree": "bin/agentree.cjs"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "dist-electron",
+    "assets"
+  ],
   "scripts": {
     "dev": "concurrently -n vite,main,app -c cyan,yellow,magenta \"npm:dev:renderer\" \"npm:dev:main\" \"npm:dev:app\"",
     "dev:renderer": "vite",
     "dev:main": "node build-electron.mjs --watch",
     "dev:app": "AGENTVIEW_DEV_URL=http://localhost:5173 electron .",
     "build": "tsc -b && vite build && node build-electron.mjs",
+    "prepare": "npm run build",
     "start": "electron .",
     "typecheck": "tsc -b --force"
   },
   "dependencies": {
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "zustand": "^5.0.2"
+    "electron": "^43.2.0"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "zustand": "^5.0.2",
     "@types/react": "^18.3.17",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.0",
-    "electron": "^43.2.0",
     "esbuild": "^0.28.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
