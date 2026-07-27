@@ -1,9 +1,8 @@
 import { app, BrowserWindow, ipcMain, nativeImage, nativeTheme, shell } from "electron";
 import path from "node:path";
 
-import { listSessions, loadSession } from "./transcripts.ts";
+import { listAllSessions, loadAnySession, forkAnyAt } from "./registry.ts";
 import { writeMeta } from "./meta.ts";
-import { forkAt } from "./fork.ts";
 import { watchTranscripts, type Watcher } from "./watch.ts";
 import { CH } from "./ipc.ts";
 import type { NodeMeta } from "../shared/types.ts";
@@ -66,16 +65,16 @@ function createWindow() {
 
 // ------------------------------------------------------------------ handlers
 
-ipcMain.handle(CH.listSessions, () => listSessions());
+ipcMain.handle(CH.listSessions, () => listAllSessions());
 
-ipcMain.handle(CH.getSession, (_e, id: string) => loadSession(id));
+ipcMain.handle(CH.getSession, (_e, id: string) => loadAnySession(id));
 
 ipcMain.handle(CH.patchNode, (_e, sessionId: string, nodeId: string, patch: NodeMeta) => {
   writeMeta(sessionId, nodeId, patch);
 });
 
 ipcMain.handle(CH.forkAt, (_e, sessionId: string, nodeId: string) =>
-  forkAt(sessionId, nodeId),
+  forkAnyAt(sessionId, nodeId),
 );
 
 // ---- live transcript watching ----

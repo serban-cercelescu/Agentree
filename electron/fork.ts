@@ -48,6 +48,32 @@ export function forkAt(sessionId: SessionId, nodeId: string): ForkResult {
   // reply — mid-way through its thinking/text/tool_use blocks.
   const leafUuid = node.lastRawId ?? node.id;
 
+  // A mid-turn interjection ("btw …" while Claude is working) reaches the
+  // model but is written to no transcript record — so a resume whose prefix
+  // crosses one silently loses that instruction, which reads as the fork
+  // "behaving weirdly". Nothing read-only can restore it; the honest fix is
+  // to say so up front.
+  let crossesInjected = false;
+  {
+    const byId = new Map(session.nodes.map((n) => [n.id, n]));
+    const seen = new Set<string>();
+    let cur: typeof node | undefined = node;
+    while (cur && !seen.has(cur.id)) {
+      seen.add(cur.id);
+      // A merged run that swallowed an interjection keeps its synthetic
+      // "queued:" id in absorbedIds without being marked injected itself.
+      if (
+        cur.injected ||
+        cur.id.startsWith("queued:") ||
+        cur.absorbedIds?.some((id) => id.startsWith("queued:"))
+      ) {
+        crossesInjected = true;
+        break;
+      }
+      cur = cur.parentId ? byId.get(cur.parentId) : undefined;
+    }
+  }
+
   const resume = `claude --resume ${sessionId} --resume-session-at ${leafUuid}`;
   const cwd = loc.cwd;
   return {
@@ -56,5 +82,8 @@ export function forkAt(sessionId: SessionId, nodeId: string): ForkResult {
     cwd,
     // Sessions are per-directory, so the cd is part of the command.
     command: cwd ? `cd ${JSON.stringify(cwd)} && ${resume}` : resume,
+    note: crossesInjected
+      ? "Heads up: this prefix includes a message delivered mid-turn (hollow node). Claude Code wrote no record for it, so the resumed conversation will NOT contain that instruction."
+      : undefined,
   };
 }

@@ -145,7 +145,10 @@ export function Welcome() {
           {visible.map((s) => (
             <li key={s.id}>
               <button className="tree-card" onClick={() => void openSession(s.id)}>
-                <span className="tree-title">{s.title}</span>
+                <span className="tree-title">
+                  <span className={`provider-chip ${s.provider}`}>{s.provider}</span>
+                  {s.title}
+                </span>
                 <span className="muted small tree-sub">
                   {!cwdFilter && (
                     <>
@@ -174,7 +177,7 @@ export function Welcome() {
         {!loading && visible.length === 0 && (
           <p className="muted empty">
             {sessions.length === 0
-              ? "No Claude Code sessions found in ~/.claude/projects."
+              ? "No agent sessions found (~/.claude/projects, ~/.codex/sessions, ~/.copilot/session-state)."
               : filter
                 ? "Nothing matches that filter."
                 : "No conversations in this directory yet."}

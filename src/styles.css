@@ -388,3 +388,15 @@ button.ghost:hover, a.ghost:hover { border-color: var(--line); color: var(--fg);
 .legend-hidden { opacity: 0; pointer-events: none; }
 
 .vnode.user .tip-ring { stroke: var(--user); }
+
+/* Which harness a session belongs to. Colors are fixed identities, not theme
+   accents: claude ~ Anthropic clay, codex ~ OpenAI teal, copilot ~ GitHub blue. */
+.provider-chip {
+  display: inline-block; padding: 1px 7px; margin-right: 8px;
+  border-radius: 999px; font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.04em; vertical-align: 2px;
+  border: 1px solid transparent;
+}
+.provider-chip.claude { color: #c96442; border-color: #c9644255; background: #c9644214; }
+.provider-chip.codex { color: #10a37f; border-color: #10a37f55; background: #10a37f14; }
+.provider-chip.copilot { color: #6c9bd1; border-color: #6c9bd155; background: #6c9bd114; }

@@ -1,6 +1,17 @@
 export type NodeId = string; // Claude Code message uuid
 export type SessionId = string;
 
+/**
+ * The harness a session belongs to. Each stores transcripts differently:
+ *
+ * - `claude`   — ~/.claude/projects/**.jsonl, a native DAG (uuid/parentUuid);
+ * - `codex`    — ~/.codex/sessions/Y/M/D/rollout-*.jsonl, linear; a fork is a
+ *                NEW rollout carrying a copied prefix plus `forked_from_id`;
+ * - `copilot`  — ~/.copilot/session-state/<id>/events.jsonl, a linear
+ *                id/parentId event chain; forks are copy-truncated dirs.
+ */
+export type ProviderId = "claude" | "codex" | "copilot";
+
 export type NodeStatus = "dead-end" | "favorite";
 export type NodeRole = "user" | "assistant";
 
@@ -69,6 +80,7 @@ export interface UsageSnapshot {
 
 export interface SessionMeta {
   id: SessionId;
+  provider: ProviderId;
   /** Working directory the session belongs to — needed to resume it in the CLI. */
   cwd: string;
   project: string;
@@ -76,6 +88,11 @@ export interface SessionMeta {
   updatedAt: number;
   nodeCount: number;
   branchPoints: number;
+  /**
+   * Ready-to-paste command that resumes this session at its tip, built by the
+   * provider — the renderer must not hard-code any one CLI's flag spelling.
+   */
+  resumeCommand: string;
 }
 
 export interface SessionDetail {
@@ -114,10 +131,17 @@ export interface AgentreeApi {
 export type ForkResult =
   | {
       ok: true;
-      /** The session to resume — the SAME id; the branch lives in this tree. */
+      /**
+       * The session to resume. For Claude this is the SAME id — the branch
+       * lives inside one transcript. For Codex/Copilot the harness has no
+       * resume-at flag, so the fork IS a new session (a copy-truncated
+       * transcript); Agentree stitches the family back into one tree.
+       */
       id: SessionId;
       cwd: string;
       /** Ready-to-paste shell command. */
       command: string;
+      /** Provider-specific caveat worth showing next to the command. */
+      note?: string;
     }
   | { ok: false; error: string };

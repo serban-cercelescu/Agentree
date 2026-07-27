@@ -61,14 +61,16 @@ export function NodePanel() {
   const ctx = node ? contextAt(node.id, nodes) : null;
   const depth = node ? pathToRoot(node.id, nodes).length : 0;
 
-  const resumeCmd = meta.cwd
-    ? `cd ${JSON.stringify(meta.cwd)} && claude --resume ${meta.id}`
-    : `claude --resume ${meta.id}`;
+  // Built by the provider: each harness spells resume differently
+  // (`claude --resume`, `codex resume`, `copilot --resume=`).
+  const resumeCmd = meta.resumeCommand;
 
   return (
     <aside className="panel">
       <section className="panel-block session-block">
-        <h3>Session</h3>
+        <h3>
+          Session <span className={`provider-chip ${meta.provider}`}>{meta.provider}</span>
+        </h3>
         <div className="kv">
           <span className="muted small">id</span>
           <code className="id">{meta.id}</code>
@@ -185,7 +187,8 @@ export function NodePanel() {
                     <Copy value={forkResult.id} label="copy session id" />
                   </div>
                   <p className="muted small hint">
-                    Continues from this turn as a new branch. Nothing is deleted.
+                    {forkResult.note ??
+                      "Continues from this turn as a new branch. Nothing is deleted."}
                   </p>
                 </div>
               ) : (

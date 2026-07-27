@@ -1,8 +1,10 @@
 # Agentree
 
-A desktop app that draws your Claude Code conversations as an SVG tree.
-Read-only: you talk to Claude in the CLI, and use this to see the shape of a
-conversation and copy session ids back out to `--resume`.
+A desktop app that draws your coding-agent conversations as an SVG tree —
+**Claude Code, OpenAI Codex, and GitHub Copilot CLI**, side by side in one
+list. You talk to the agent in its own CLI; Agentree shows you the shape of
+the conversation, lets you fork it after any turn, and hands you the exact
+resume command to paste back.
 
 ```
 npm install
@@ -10,8 +12,18 @@ npm run build && npm start     # app
 npm run dev                    # app + Vite HMR
 ```
 
-No API key, no Anthropic SDK, no network calls, no localhost port. It reads
-`~/.claude/projects/**/*.jsonl` off disk and never writes to them.
+No API key, no SDKs, no network calls, no localhost port. It reads the
+harnesses' own session stores off disk:
+
+```
+~/.claude/projects/**/*.jsonl                 Claude Code
+~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl  Codex
+~/.copilot/session-state/<id>/events.jsonl    Copilot CLI
+```
+
+Claude transcripts are never written to. Codex/Copilot forks require creating
+a *new* session file (their harnesses have no resume-at flag — see below);
+existing transcripts are still never modified.
 
 ## Architecture
 
@@ -19,19 +31,94 @@ Electron, with **no HTTP server**. The renderer has no Node access; everything
 crosses the contextBridge as a handful of typed IPC calls:
 
 ```
-assets/                 logo.png (transparent), sized variants, logo.icns
-electron/main.ts        BrowserWindow + ipcMain handlers (filesystem lives here)
-electron/preload.ts     contextBridge → window.agentree, and nothing else
-electron/transcripts.ts parse ~/.claude/projects → nodes (read-only)
-electron/meta.ts        sidecar annotation store
-shared/types.ts         node/session types + the IPC contract
-shared/render.ts        lineage walks, branch counting, token math
-src/tree-layout.ts      chain compression + tidy layout
-src/components/         TreeCanvas (the SVG) · NodePanel · Toolbar · Welcome
+assets/                   logo.png (transparent), sized variants, logo.icns
+electron/main.ts          BrowserWindow + ipcMain handlers (filesystem lives here)
+electron/preload.ts       contextBridge → window.agentree, and nothing else
+electron/registry.ts      one surface over the three providers, routed by id
+electron/transcripts.ts   Claude Code provider: ~/.claude/projects → nodes
+electron/providers/codex.ts    Codex rollouts → nodes, fork-by-copy
+electron/providers/copilot.ts  Copilot event logs → nodes, fork-by-copy
+electron/providers/stitch.ts   fork families of linear sessions → one tree
+electron/lineage.ts       fork-parentage sidecar (~/.agentree/lineage.json)
+electron/meta.ts          sidecar annotation store
+shared/types.ts           node/session types + the IPC contract
+shared/render.ts          lineage walks, branch counting, token math
+src/tree-layout.ts        chain compression + tidy layout
+src/components/           TreeCanvas (the SVG) · NodePanel · Toolbar · Welcome
 ```
 
 `contextIsolation: true`, `nodeIntegration: false`. A viewer that reads your
 entire conversation history shouldn't also hand the page `require`.
+
+## Three harnesses, one tree model
+
+Everything downstream of parsing — layout, chains, annotations, the panel —
+sees only `TurnNode[]`. The providers' job is to make three very different
+stores produce that one shape. What each store actually is (all verified
+empirically, not from docs):
+
+|                    | Claude Code | Codex | Copilot CLI |
+|--------------------|-------------|-------|-------------|
+| transcript         | JSONL, one record per content block | JSONL "rollout", `session_meta` + `response_item` + `event_msg` records | JSONL event log per session dir |
+| structure          | native DAG (`uuid`/`parentUuid`)    | linear, append-only | linear `id`/`parentId` event chain |
+| clean display text | must be cleaned (wrappers, ANSI)    | `event_msg` `user_message`/`agent_message` are already clean | `data.content` on `*.message` events is already clean |
+| plumbing to avoid  | `<system-reminder>`, command wrappers, task notifications | injected `role:"developer"`/`"user"` response_items (`<permissions instructions>`, `<environment_context>`…) | `transformedContent` (wraps the same text in `<current_datetime>` etc.) |
+| usage              | `message.usage` per record | `event_msg token_count` (input includes cached; converted) | not recorded per turn |
+| resume             | `claude --resume <id>` | `codex resume <id>` (appends to the SAME rollout) | `copilot --resume=<id>` (replays events.jsonl) |
+| fork after turn N  | `--resume-session-at <uuid>`, zero writes | new rollout = copied prefix + fresh `session_meta` with `forked_from_id` | copy session dir, truncate events.jsonl, rewrite ids |
+
+### Forking where the harness has no resume-at flag
+
+Claude Code can branch *inside* one transcript, so forking writes nothing.
+Codex and Copilot cannot — their sessions are linear files, and their CLIs
+resume only at the tip. But both can be forked by **copy-truncate**: write a
+new session whose transcript is the old one up to the chosen turn.
+
+- **Codex** does this itself (`codex fork`, tip-only): the child rollout
+  carries a verbatim copy of the parent's records plus `forked_from_id` in its
+  `session_meta`. Agentree writes exactly that format at ANY turn, so
+  `codex resume <new-id>` — and codex's own tooling — accept the result.
+  Verified: a fork cut before a "PONG" exchange resumed knowing only "PING",
+  and a fork of a tool-using session recalled its tool results from the copied
+  `function_call_output` records.
+- **Copilot** resolves `--resume` purely from `~/.copilot/session-state/<id>/`;
+  no row in its central SQLite is needed. The copy must rewrite the
+  `sessionId` inside the copied `session.start` event — left stale, the
+  resumed CLI logs new turns under the PARENT's id in the central store
+  (observed before the rewrite was added). The central `session-store.db` is
+  copilot's derived mirror and is never touched.
+
+Both forks are non-destructive: a new file/dir appears, nothing existing
+changes. The cut always lands on the turn's LAST raw record (`lastRawId`),
+same as Claude — merged turns span many records.
+
+### Stitching fork families back into a tree
+
+A fork family (parent + copy-truncated children) *is* a tree, encoded as
+shared prefixes across files. `stitch.ts` rebuilds it: children are matched
+against their parent's chain turn-by-turn on (role, normalised text) — safe
+because the prefix is a byte copy — and their suffix hangs off the last shared
+turn. The welcome list shows one entry per family (the ⑂ badge counts the
+stitched branch points); opening any member opens the family.
+
+Parentage comes from `forked_from_id` for Codex (append-only, survives
+anything). For Copilot it lives in Agentree's own sidecar
+`~/.agentree/lineage.json`, because Copilot **regenerates workspace.yaml on
+every resume and silently drops unknown keys** — a `forked_from:` key written
+there was gone after one resume.
+
+### Codex parsing notes
+
+- The `session_meta` first line embeds the full base-instructions prompt —
+  routinely 30–100 KB. Anything that "reads the first line" must be prepared
+  to grow its buffer.
+- `event_msg` records are the display stream; `response_item` records are
+  read only for `function_call` names and reasoning summaries (the reasoning
+  itself ships encrypted).
+- Subagent threads (`thread_source: subagent`) are Codex's sidechains and get
+  no listing of their own.
+- Codex's `input_tokens` includes the cached part; Agentree stores the
+  Anthropic-shaped split (uncached remainder + `cache_read_input_tokens`).
 
 ## The tree already exists
 
@@ -344,8 +431,16 @@ content.
 
 ## Known gaps
 
-- **`/btw` forks behave weirdly** — forks made off a `/btw` (side-question)
-  turn come out wrong; the behaviour needs investigating and fixing.
+- **`/btw` forks behave weirdly** — forks made around mid-turn side messages
+  come out wrong. Root cause found for one class: a message delivered while
+  Claude is working exists in NO transcript record, so a fork whose prefix
+  crosses it resumes *without* that instruction. The fork command now warns
+  when that happens; a read-only viewer can't do more. If other weirdness
+  remains, it needs a fresh repro.
+- Copilot sessions from before the `events.jsonl` format (older CLI versions)
+  are not listed — their turns live only in the central SQLite mirror.
+- Copilot records no per-turn token usage, so the context/prompt numbers stay
+  blank on those trees.
 - `listSessions` parses every transcript per call — 283 files is fine, but it
   wants an mtime-keyed index beyond a thousand.
 - No file watching; sessions re-read on `refresh`.

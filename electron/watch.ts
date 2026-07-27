@@ -3,6 +3,8 @@ import os from "node:os";
 import path from "node:path";
 
 import { locate } from "./transcripts.ts";
+import { SESSIONS as CODEX_SESSIONS, locateCodex } from "./providers/codex.ts";
+import { STATE as COPILOT_STATE, locateCopilot } from "./providers/copilot.ts";
 import type { SessionId } from "../shared/types.ts";
 
 const PROJECTS = path.join(os.homedir(), ".claude", "projects");
@@ -33,14 +35,28 @@ export function watchTranscripts(
   sessionId: SessionId | null,
   onChange: () => void,
 ): Watcher {
-  let dir = PROJECTS;
-  let only: string | null = null;
+  // Targets: (dir, only-this-file filter). For a session, watch the directory
+  // owning its transcript in whichever harness has it. For the welcome screen,
+  // watch all three roots.
+  const targets: { dir: string; only: string | null }[] = [];
 
   if (sessionId) {
     const loc = locate(sessionId);
-    if (!loc) return { close() {} };
-    dir = path.dirname(loc.file);
-    only = path.basename(loc.file);
+    if (loc) {
+      targets.push({ dir: path.dirname(loc.file), only: path.basename(loc.file) });
+    } else {
+      const codex = locateCodex(sessionId);
+      // A stitched tree can grow through ANY family member (or a brand-new
+      // fork), so a session watch covers the provider's whole root — the
+      // parse cache keeps the rescan cheap.
+      if (codex) targets.push({ dir: CODEX_SESSIONS, only: null });
+      else if (locateCopilot(sessionId)) targets.push({ dir: COPILOT_STATE, only: null });
+      else return { close() {} };
+    }
+  } else {
+    targets.push({ dir: PROJECTS, only: null });
+    targets.push({ dir: CODEX_SESSIONS, only: null });
+    targets.push({ dir: COPILOT_STATE, only: null });
   }
 
   let timer: NodeJS.Timeout | null = null;
@@ -52,26 +68,30 @@ export function watchTranscripts(
     }, QUIET_MS);
   };
 
-  let w: fs.FSWatcher;
-  try {
-    w = fs.watch(dir, { recursive: !sessionId }, (_event, filename) => {
-      if (only && filename && path.basename(filename) !== only) return;
-      if (!only && filename && !filename.endsWith(".jsonl")) return;
-      fire();
-    });
-  } catch {
-    // No watch (missing directory, or a platform without recursive watch).
-    // The view simply stays static rather than the app failing to open.
-    return { close() {} };
+  const watchers: fs.FSWatcher[] = [];
+  for (const { dir, only } of targets) {
+    try {
+      const w = fs.watch(dir, { recursive: !only }, (_event, filename) => {
+        if (only && filename && path.basename(filename) !== only) return;
+        // Claude/Codex append .jsonl; Copilot appends events.jsonl inside a
+        // session dir — both end in .jsonl, and yaml changes ride along on the
+        // same debounce as their neighbouring events write.
+        if (!only && filename && !/\.(jsonl|yaml)$/.test(filename)) return;
+        fire();
+      });
+      // A watcher on a directory the user may delete shouldn't take the app down.
+      w.on("error", () => w.close());
+      watchers.push(w);
+    } catch {
+      // Missing directory (harness not installed) — the others still watch.
+    }
   }
-
-  // A watcher on a directory the user may delete shouldn't take the app down.
-  w.on("error", () => w.close());
+  if (watchers.length === 0) return { close() {} };
 
   return {
     close() {
       if (timer) clearTimeout(timer);
-      w.close();
+      for (const w of watchers) w.close();
     },
   };
 }

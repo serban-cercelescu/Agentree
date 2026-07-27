@@ -51,12 +51,45 @@ const WRAPPERS = [
   "command-message",
   "command-args",
   "user-prompt-submit-hook",
-  "task-notification",
   // `!`-prefixed bash mode in the CLI
   "bash-input",
   "bash-stdout",
   "bash-stderr",
 ].join("|");
+
+/**
+ * A background-task notification is a bundle of sub-tags (`task-id`,
+ * `tool-use-id`, `output-file`, `status`, `summary`) that would render as raw
+ * markup if merely unwrapped. Only `summary` is prose; the rest is plumbing —
+ * so the whole block is rebuilt as its summary line. Handled before the
+ * generic unwrap so the sub-tags never reach it (they're generic names like
+ * `<status>` that must NOT be stripped when they appear in real content).
+ */
+const TASK_NOTIF = /<task-notification>([\s\S]*?)<\/task-notification>/g;
+/**
+ * The same bundle WITHOUT its wrapper: queued mid-turn messages surface task
+ * notifications inline, so `<task-id>…` runs appear bare inside user records.
+ * `<task-id>` is distinctive enough to anchor on; the generic-named sub-tags
+ * are only consumed as part of a run that starts with it.
+ */
+const BARE_NOTIF =
+  /<task-id>[\s\S]*?<\/task-id>(?:\s*<(tool-use-id|output-file|status|summary)>[\s\S]*?<\/\1>)*/g;
+/**
+ * Boilerplate paragraph the harness prints above task notifications
+ * ("[SYSTEM NOTIFICATION - NOT USER INPUT] …"). Addressed to the model, never
+ * typed by the user; matched as one contiguous paragraph.
+ */
+const SYSTEM_NOTIF = /\[SYSTEM NOTIFICATION - NOT USER INPUT\][^\n]*(?:\n(?!\s*\n)[^\n]*)*/g;
+
+function rebuildTaskNotification(inner: string): string {
+  const summary = /<summary>([\s\S]*?)<\/summary>/.exec(inner);
+  if (summary) return summary[1].trim();
+  // No summary tag — drop the known plumbing sub-tags, keep whatever remains.
+  const rest = inner
+    .replace(/<(task-id|tool-use-id|output-file|status)>[\s\S]*?<\/\1>/g, "")
+    .trim();
+  return rest || "[background task update]";
+}
 /** Real content in a wrapper: keep the inner text (trimmed), lose the tag. */
 const UNWRAP_BLOCKS = new RegExp(`<(${WRAPPERS})>([\\s\\S]*?)<\\/\\1>`, "g");
 /** A wrapper whose partner tag lives in another record. */
@@ -71,7 +104,12 @@ const UNWRAP_STRAY = new RegExp(`</?(?:${WRAPPERS})>`, "g");
  * content it's meant to clean.
  */
 function cleanText(s: string): { text: string; synthetic: boolean } {
-  let out = s.replace(ANSI, "").replace(DROP_BLOCKS, "");
+  let out = s
+    .replace(ANSI, "")
+    .replace(DROP_BLOCKS, "")
+    .replace(SYSTEM_NOTIF, "")
+    .replace(TASK_NOTIF, (_m, inner: string) => rebuildTaskNotification(inner))
+    .replace(BARE_NOTIF, (m) => rebuildTaskNotification(m));
   let synthetic = false;
 
   // A slash-command record is nothing but wrapper blocks, pretty-printed with
@@ -156,7 +194,7 @@ function textOf(content: unknown): {
  * at. Only merges where the parent has EXACTLY one child, so branch points are
  * never collapsed — a branch below the run simply re-parents onto the head.
  */
-function mergeSameRoleRuns(nodes: TurnNode[]): TurnNode[] {
+export function mergeSameRoleRuns(nodes: TurnNode[]): TurnNode[] {
   const kids = new Map<string, TurnNode[]>();
   for (const n of nodes) {
     const key = n.parentId ?? "\0root";
@@ -611,15 +649,23 @@ export function loadSession(sessionId: SessionId): SessionDetail | null {
   return {
     meta: {
       id: sessionId,
+      provider: "claude",
       cwd: loc.cwd,
       project: loc.cwd ? path.basename(loc.cwd) : decodeProjectName(loc.dirName),
       title: title || "Untitled",
       updatedAt: lastInteraction(parsed, stat.mtimeMs),
       nodeCount: nodes.length,
       branchPoints: countBranchPoints(children),
+      resumeCommand: claudeResume(sessionId, loc.cwd),
     },
     nodes,
   };
+}
+
+/** Sessions are per-directory, so the cd is part of the command. */
+function claudeResume(sessionId: SessionId, cwd: string): string {
+  const resume = `claude --resume ${sessionId}`;
+  return cwd ? `cd ${JSON.stringify(cwd)} && ${resume}` : resume;
 }
 
 /**
@@ -658,14 +704,17 @@ function summarise(file: string, dirName: string): SessionMeta | null {
   }
 
   const cwd = readCwd(file);
+  const id = path.basename(file).slice(0, -6);
   const meta: SessionMeta = {
-    id: path.basename(file).slice(0, -6),
+    id,
+    provider: "claude",
     cwd,
     project: cwd ? path.basename(cwd) : decodeProjectName(dirName),
     title: title || "Untitled",
     updatedAt: lastInteraction(parsed, stat.mtimeMs),
     nodeCount: nodes.length,
     branchPoints: countBranchPoints(childIndex(nodes)),
+    resumeCommand: claudeResume(id, cwd),
   };
   summaries.set(file, { mtimeMs: stat.mtimeMs, size: stat.size, meta });
   return meta;
