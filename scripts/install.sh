@@ -20,20 +20,20 @@ for tool in git node npm; do
 done
 
 if [ -d "$APP_DIR/.git" ]; then
-  echo "Updating existing checkout in $APP_DIR…"
+  echo "Updating existing checkout in ${APP_DIR}..."
   git -C "$APP_DIR" fetch --quiet origin main
   git -C "$APP_DIR" reset --quiet --hard origin/main
 else
-  echo "Cloning into $APP_DIR…"
+  echo "Cloning into ${APP_DIR}..."
   mkdir -p "$(dirname "$APP_DIR")"
   git clone --quiet --depth 1 "$REPO_URL" "$APP_DIR"
 fi
 
 cd "$APP_DIR"
-echo "Installing dependencies and building…"
+echo "Installing dependencies and building..."
 npm install --no-audit --no-fund
 
-echo "Installing the agentree command…"
+echo "Installing the agentree command..."
 TARBALL="$(npm pack --silent | tail -n 1)"
 npm install -g --no-audit --no-fund "$APP_DIR/$TARBALL"
 rm -f "$TARBALL"
