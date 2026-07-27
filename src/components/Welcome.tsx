@@ -21,8 +21,9 @@ function tilde(p: string): string {
 const RAIL_DIRS = 10;
 
 export function Welcome() {
-  const { sessions, filter, cwdFilter, loading, openSession, set } = useStore();
+  const { sessions, filter, cwdFilter, loading, update, openSession, set } = useStore();
   const [moreOpen, setMoreOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   // Directories ranked by their most recent conversation, so the rail reads in
   // the same order as the list: what you touched last is on top.
@@ -120,6 +121,33 @@ export function Welcome() {
       </aside>
 
       <main className="session-pane">
+        {update && (
+          <div className="update-banner">
+            <span>
+              A newer version of Agentree is available ({update.current} → {update.latest}).
+              Update with <code>{update.command}</code>
+            </span>
+            <span className="update-actions">
+              <button
+                className="ghost"
+                onClick={async () => {
+                  try {
+                    await navigator.clipboard.writeText(update.command);
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1200);
+                  } catch {
+                    /* clipboard denied; the command is on screen to copy by hand */
+                  }
+                }}
+              >
+                {copied ? "✓ copied" : "copy command"}
+              </button>
+              <button className="ghost" onClick={() => set({ update: null })}>
+                dismiss
+              </button>
+            </span>
+          </div>
+        )}
         <div className="session-pane-head">
           <input
             className="search"

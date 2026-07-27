@@ -7,6 +7,7 @@ import type {
   SessionDetail,
   SessionMeta,
   TurnNode,
+  UpdateInfo,
 } from "../shared/types.ts";
 
 interface State {
@@ -26,6 +27,8 @@ interface State {
 
   error: string | null;
   loading: boolean;
+  /** Set once per launch if the main process found a newer build on GitHub. */
+  update: UpdateInfo | null;
 
   boot: () => Promise<void>;
   refreshSessions: () => Promise<void>;
@@ -98,10 +101,12 @@ export const useStore = create<State>((set, get) => ({
 
   error: null,
   loading: false,
+  update: null,
 
   set: (partial) => set(partial),
 
   boot: async () => {
+    api.onUpdateAvailable((update) => set({ update }));
     await get().refreshSessions();
   },
 

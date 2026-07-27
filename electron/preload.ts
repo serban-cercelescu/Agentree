@@ -13,6 +13,12 @@ const api: AgentreeApi = {
     ipcRenderer.invoke(CH.patchNode, sessionId, nodeId, patch),
   forkAt: (sessionId, nodeId) => ipcRenderer.invoke(CH.forkAt, sessionId, nodeId),
 
+  onUpdateAvailable: (cb) => {
+    const listener = (_e: unknown, info: Parameters<typeof cb>[0]) => cb(info);
+    ipcRenderer.on(CH.updateAvailable, listener);
+    return () => ipcRenderer.off(CH.updateAvailable, listener);
+  },
+
   watch: (sessionId, onChange) => {
     // A token, not the session id: `null` (watch everything) is a legitimate
     // subscription too, and two views of the same session must unsubscribe

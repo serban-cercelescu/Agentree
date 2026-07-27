@@ -13,4 +13,6 @@ export const CH = {
   watchStop: "watch:stop",
   /** main → renderer: the watched transcript changed on disk. */
   changed: "watch:changed",
+  /** main → renderer: a newer build exists on GitHub. */
+  updateAvailable: "update:available",
 } as const;

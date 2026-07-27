@@ -47,20 +47,25 @@ Supported harnesses:
 
 ## Privacy
 
-Agentree runs entirely on your machine. No API keys, no accounts, no network
-calls, no telemetry. Your transcripts are never modified: annotations go to
+Agentree runs entirely on your machine. No API keys, no accounts, no
+telemetry. Your transcripts are never modified: annotations go to
 `~/.agentree/`, and forking (for harnesses that need it) only ever *creates*
 a new session file.
 
+The only network request is a version check against GitHub at launch (does
+`main` have newer commits than this build?). Nothing about you or your
+sessions is sent, and it fails silently offline. Set
+`AGENTREE_NO_UPDATE_CHECK=1` to disable it entirely.
+
 ## Installation
 
-Requirements: [Node.js](https://nodejs.org) 20 or later.
+Requirements: [Node.js](https://nodejs.org) 20 or later, git.
 
 ```sh
-npm install -g serban-cercelescu/Agentree
+curl -fsSL https://raw.githubusercontent.com/serban-cercelescu/Agentree/main/scripts/install.sh | sh
 ```
 
-That's the whole install — npm clones the repo, builds it, and puts
+That's the whole install — it clones the source, builds it, and puts
 `agentree` on your PATH. Then:
 
 ```sh
@@ -69,7 +74,8 @@ agentree
 
 The app opens and finds your sessions automatically; harnesses that aren't
 installed are simply skipped. `agentree --foreground` keeps it attached to
-the terminal with logs.
+the terminal with logs. Re-run the installer any time to update — the app
+also checks GitHub on launch and shows a notice when a newer build exists.
 
 ### From a clone
 

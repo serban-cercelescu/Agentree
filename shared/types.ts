@@ -115,6 +115,16 @@ export interface SessionDetail {
   nodes: TurnNode[];
 }
 
+/** Result of the launch-time "is this the latest build?" check. */
+export interface UpdateInfo {
+  /** Short commit sha (or version) of the running build. */
+  current: string;
+  /** Short commit sha (or version) of the latest build on GitHub. */
+  latest: string;
+  /** Ready-to-paste command that performs the update. */
+  command: string;
+}
+
 // ---------------------------------------------------------------- IPC contract
 
 /** The only fields Agentree itself owns; everything else is read-only. */
@@ -140,6 +150,12 @@ export interface AgentreeApi {
    * fire the callback when it changes on disk. Returns an unsubscribe function.
    */
   watch(sessionId: string | null, onChange: (sessionId: string | null) => void): () => void;
+
+  /**
+   * Fires at most once per launch, if the main process's GitHub check found a
+   * newer build than the one running. Returns an unsubscribe function.
+   */
+  onUpdateAvailable(cb: (info: UpdateInfo) => void): () => void;
 }
 
 /** Outcome of a fork. `ok: false` carries a reason fit to show the user. */

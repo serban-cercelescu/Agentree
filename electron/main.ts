@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, nativeImage, nativeTheme, shell } from "el
 import path from "node:path";
 
 import { listAllSessions, loadAnySession, forkAnyAt } from "./registry.ts";
+import { checkForUpdate } from "./update.ts";
 import { writeMeta } from "./meta.ts";
 import { watchTranscripts, type Watcher } from "./watch.ts";
 import { CH } from "./ipc.ts";
@@ -58,6 +59,14 @@ function createWindow() {
   win.webContents.setWindowOpenHandler(({ url }) => {
     void shell.openExternal(url);
     return { action: "deny" };
+  });
+
+  // Update check, once the renderer is listening. Fire-and-forget: the check
+  // is silent on every failure, so nothing here can delay or break startup.
+  win.webContents.once("did-finish-load", () => {
+    void checkForUpdate(ROOT()).then((info) => {
+      if (info && !win.isDestroyed()) win.webContents.send(CH.updateAvailable, info);
+    });
   });
 
   return win;
