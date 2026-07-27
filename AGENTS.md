@@ -47,7 +47,7 @@ empirically, not from docs):
 | plumbing to avoid  | `<system-reminder>`, command wrappers, task notifications | injected `role:"developer"`/`"user"` response_items (`<permissions instructions>`, `<environment_context>`…) | `transformedContent` (wraps the same text in `<current_datetime>` etc.) |
 | usage              | `message.usage` per record | `event_msg token_count` (input includes cached; converted) | not recorded per turn |
 | resume             | `claude --resume <id>` | `codex resume <id>` (appends to the SAME rollout) | `copilot --resume=<id>` (replays events.jsonl) |
-| fork after turn N  | `--resume-session-at <uuid>`, zero writes | new rollout = copied prefix + fresh `session_meta` with `forked_from_id` | copy session dir, truncate events.jsonl, rewrite ids |
+| fork after turn N  | explicit `last-prompt` pin appended by the command at resume time (+ `--resume-session-at` for print mode) | new rollout = copied prefix + fresh `session_meta` with `forked_from_id` | copy session dir, truncate events.jsonl, rewrite ids |
 
 ### Forking where the harness has no resume-at flag
 
@@ -276,37 +276,47 @@ its own cwd — hence the `cd`. A `--fork-session` variant is offered too.
 selected turn*:
 
 ```
-cd "…" && claude --resume <sessionId> --resume-session-at <messageUuid>
+cd "…" && printf '%s\n' '{"type":"last-prompt","leafUuid":"<uuid>","explicit":true,"sessionId":"<id>"}' \
+  >> "<transcript>" && claude --resume <sessionId> --resume-session-at <messageUuid>
 ```
 
-`--resume-session-at` is an undocumented CLI flag (the Agent SDK's
-`resumeSessionAt`): it loads the conversation as the chain ending at that uuid,
-and the new exchange branches off it — same session id, same file, same tree,
-drawn live by the watcher. Agentree writes **nothing**; the target travels on
-the command line.
+Two mechanisms, belt and braces, because they cover different CLI entrypoints:
 
-This is the third design, and the first correct one:
+- the appended record is `/rewind`'s **explicit `last-prompt` pin** — the only
+  thing *interactive* resume obeys. Verified on CLI 2.1.220: the TUI hydrates
+  the chain ending at the pinned uuid and the next exchange lands as a second
+  child of it. `"explicit": true` is load-bearing — a bare `leafUuid` pointer
+  is ignored and the resume lands on the tip (also verified).
+- `--resume-session-at` is the Agent SDK's `resumeSessionAt`, and the CLI's own
+  option table marks it **print-mode-only** ("use with --resume in print
+  mode"). Interactive mode silently ignores it. Kept because it makes the same
+  command correct under `-p`, and costs nothing interactively.
+
+This is the fourth design:
 
 1. **Copying the transcript under a new id** made every fork list as an
    unrelated conversation (and cost a full file copy per fork).
-2. **Appending `/rewind`'s explicit `last-prompt` pointer** worked — but only
-   if nothing wrote after it. A session open in a CLI appends its own
-   non-explicit pointer on exit, and the loader's reducer lets any later
-   record clear the pin. Users fork while the session is open, then exit to go
-   resume: the pin died in exactly that gap, every time (observed as
-   interleaved `explicit=True` / `explicit=None` pairs in a real transcript).
-3. **The flag** has neither problem: nothing is written until the user actually
-   resumes, and no interleaved writer can stomp a command-line argument.
+2. **Appending the pin at fork-click time** worked — but only if nothing wrote
+   after it. A session open in a CLI appends its own non-explicit pointer on
+   exit, and the loader's reducer lets any later record clear the pin. Users
+   fork while the session is open, then exit to go resume: the pin died in
+   exactly that gap, every time (observed as interleaved `explicit=True` /
+   `explicit=None` pairs in a real transcript).
+3. **The flag alone** looked correct because it WAS verified — in print mode.
+   Interactive hydration never reads it, so every interactive fork quietly
+   continued from the tip. (Bug report: "forking just continues the
+   conversation".) The CLI help's "in print mode" clause is the tell.
+4. **The pin, appended by the emitted command itself** immediately before the
+   resume (`printf … >> transcript && claude --resume …`). Design 2's failure
+   needed a writer to land between pin and resume; here that window is
+   milliseconds inside one `&&` chain. Agentree still writes nothing at
+   fork-click time — nothing happens until the user runs the command.
 
 The anchor is the turn's **last** raw record (`TurnNode.lastRawId`), not its
 `id`: a turn spans one record per content block, so anchoring on `id` would
-resume mid-reply. Verified end-to-end: resume at a mid-session assistant uuid →
-the model knows the prefix, has never seen the later turns, and its reply lands
-as a second child of the anchored node.
-
-Caveat: hidden flags aren't a stable interface. If a future CLI drops
-`--resume-session-at`, the fallback is design 2's pointer append issued
-immediately before the resume.
+resume mid-reply. Verified end-to-end in the interactive TUI: resume at a
+mid-session assistant uuid → the model knows the prefix, has never seen the
+later turns, and its reply lands as a second child of the anchored node.
 
 ## Live view
 

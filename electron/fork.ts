@@ -4,33 +4,31 @@ import type { ForkResult, SessionId } from "../shared/types.ts";
 /**
  * Build the command that resumes a session just after a chosen turn.
  *
- * The CLI has an undocumented flag for exactly this — the Agent SDK's
- * `resumeSessionAt`, exposed as:
+ * The command does two things, belt and braces, because the two mechanisms
+ * cover different CLI entrypoints:
  *
- *     claude --resume <sessionId> --resume-session-at <messageUuid>
+ *  1. Appends `/rewind`'s explicit pointer record to the transcript:
+ *     `{"type":"last-prompt","leafUuid":<uuid>,"explicit":true,...}`.
+ *     Interactive resume honours exactly this pin — verified on CLI 2.1.220:
+ *     the TUI hydrates the chain ending at the pinned uuid and the next
+ *     exchange lands as a second child of it. Without `"explicit":true` the
+ *     pointer is ignored (also verified; a bare leafUuid resumed at the tip).
+ *  2. Passes `--resume-session-at <uuid>` — which the CLI's own option table
+ *     declares print-mode-only ("use with --resume in print mode"), and which
+ *     interactive mode silently ignores. Kept because it makes the same
+ *     command correct under `-p`, and costs nothing interactively.
  *
- * It loads the conversation as the chain ending at that uuid (inclusive), and
- * the new exchange branches off it in the same transcript — same session id,
- * same tree.
+ * Why not the flag alone (the previous design): it looked correct because it
+ * WAS verified — in print mode. Interactively the hydration path never reads
+ * it, so every fork quietly continued from the tip.
  *
- * This is the third design, and the first correct one:
- *
- *  1. Copying the transcript under a new id made every fork list as an
- *     unrelated conversation.
- *  2. Appending `/rewind`'s explicit `last-prompt` pointer worked — but only
- *     if nothing wrote after it. A session open in a CLI appends its own
- *     non-explicit pointer on exit, and the loader's reducer lets any later
- *     record clear the pin. Users fork while the session is open, then exit to
- *     go resume: the pin died in exactly that gap, every time.
- *
- * The flag has neither problem: nothing is written until the user actually
- * resumes, and the target travels on the command line, so no interleaved
- * writer can stomp it. Agentree is back to strictly read-only over
- * `~/.claude/projects`.
- *
- * Caveat worth keeping in mind: hidden flags aren't a stable interface. If a
- * future CLI drops `--resume-session-at`, the fallback is the pointer append
- * (design 2) issued immediately before the resume.
+ * Why the pointer append is safe here when it wasn't as a fork-time write:
+ * the append is part of the emitted command, executed by the user immediately
+ * before the resume (`printf … >> transcript && claude --resume …`). The
+ * historical failure mode — a still-open CLI appending its own non-explicit
+ * pointer after ours and clearing the pin — needs a writer to land in that
+ * millisecond gap. Agentree itself still writes nothing at fork-click time;
+ * nothing happens until the user runs the command.
  */
 export function forkAt(sessionId: SessionId, nodeId: string): ForkResult {
   const loc = locate(sessionId);
@@ -98,7 +96,18 @@ export function forkAt(sessionId: SessionId, nodeId: string): ForkResult {
     }
   }
 
-  const resume = `claude --resume ${sessionId} --resume-session-at ${leafUuid}`;
+  // The explicit pin is what interactive resume actually obeys; the flag
+  // covers print mode. Uuids and session ids are plain hex-and-dashes, so the
+  // single-quoted JSON needs no escaping.
+  const pin = JSON.stringify({
+    type: "last-prompt",
+    leafUuid,
+    explicit: true,
+    sessionId,
+  });
+  const resume =
+    `printf '%s\\n' '${pin}' >> ${JSON.stringify(loc.file)} && ` +
+    `claude --resume ${sessionId} --resume-session-at ${leafUuid}`;
   const cwd = loc.cwd;
   return {
     ok: true,
