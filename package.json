@@ -25,7 +25,7 @@
     "dev:main": "node build-electron.mjs --watch",
     "dev:app": "AGENTVIEW_DEV_URL=http://localhost:5173 electron .",
     "build": "tsc -b && vite build && node build-electron.mjs",
-    "prepare": "npm run build",
+    "prepare": "node scripts/prepare.mjs",
     "start": "electron .",
     "typecheck": "tsc -b --force"
   },
