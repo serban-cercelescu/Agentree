@@ -2,6 +2,13 @@
   "name": "agentree",
   "private": true,
   "version": "0.1.0",
+  "description": "Desktop app that draws your coding-agent conversations (Claude Code, OpenAI Codex CLI, GitHub Copilot CLI) as forkable trees",
+  "license": "MIT",
+  "author": "Serban Cercelescu",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/scercelescu-QNT/agentree.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "concurrently -n vite,main,app -c cyan,yellow,magenta \"npm:dev:renderer\" \"npm:dev:main\" \"npm:dev:app\"",
