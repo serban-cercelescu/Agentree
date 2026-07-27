@@ -1,0 +1,390 @@
+:root {
+  --bg: #12100e;
+  --panel: #191614;
+  --panel-2: #201c19;
+  --line: #322c27;
+  --fg: #ede7e0;
+  --muted: #9a8f85;
+  --accent: #c96442;
+  --user: #6c9bd1;
+  --assistant: #c96442;
+  --danger: #d05a52;
+  --radius: 6px;
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #faf8f5;
+    --panel: #fff;
+    --panel-2: #f2eee9;
+    --line: #e0d8ce;
+    --fg: #21201c;
+    --muted: #756e66;
+  }
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+button, select, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; }
+code { font-family: var(--mono); font-size: 0.9em; }
+
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+.spacer { flex: 1; }
+
+button.primary { background: var(--accent); color: #fff; border: 0; padding: 8px 16px; border-radius: var(--radius); }
+button.big { padding: 12px 24px; font-size: 15px; }
+button.ghost, a.ghost {
+  background: none; border: 1px solid transparent; color: var(--muted);
+  padding: 3px 8px; border-radius: var(--radius); font-size: 12px; text-decoration: none;
+}
+button.ghost:hover, a.ghost:hover { border-color: var(--line); color: var(--fg); }
+
+.banner { padding: 8px 14px; border-radius: var(--radius); margin: 8px 12px; }
+.banner.warn { background: #7a5a1e33; border: 1px solid #b8862f66; }
+.banner.error { background: #7a1e1e33; border: 1px solid #b82f2f66; cursor: pointer; }
+
+/* ---------------------------------------------------------------- welcome */
+
+.welcome { display: flex; height: 100vh; }
+
+/* Directory rail: quiet, panel-toned, ordered by recency like the list. */
+.dir-rail {
+  width: 232px; flex: none; display: flex; flex-direction: column;
+  background: var(--panel); border-right: 1px solid var(--line);
+}
+.rail-brand {
+  display: flex; align-items: center; gap: 10px;
+  /* Top inset clears the macOS traffic lights (titleBarStyle: hiddenInset). */
+  padding: 42px 14px 14px; border-bottom: 1px solid var(--line);
+  -webkit-app-region: drag;
+}
+.rail-brand .logo { border-radius: 9px; box-shadow: 0 1px 2px #0002, 0 0 0 1px var(--line); }
+.rail-brand h1 { margin: 0; font-size: 15px; letter-spacing: -0.01em; }
+.rail-brand p { margin: 0; }
+
+.dir-list { flex: 1; overflow-y: auto; padding: 8px; }
+.rail-label {
+  padding: 12px 8px 4px; text-transform: uppercase;
+  letter-spacing: 0.09em; font-size: 10px;
+}
+.dir-row {
+  width: 100%; display: flex; align-items: center; gap: 8px;
+  background: none; border: 0; border-radius: var(--radius);
+  padding: 6px 9px; text-align: left; color: var(--fg);
+}
+.dir-row:hover { background: var(--panel-2); }
+.dir-row.active { background: var(--accent); color: #fff; }
+.dir-row.active .dir-count { color: #fffc; }
+.dir-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dir-count { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+.session-pane { flex: 1; overflow-y: auto; padding: 14px 22px 60px; }
+.session-pane-head {
+  display: flex; align-items: center; gap: 12px;
+  /* The pane's top strip doubles as window-drag surface next to the rail. */
+  padding: 28px 0 12px; -webkit-app-region: drag;
+}
+.session-pane-head * { -webkit-app-region: no-drag; }
+.search {
+  flex: 1; min-width: 240px; background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 7px 11px;
+}
+.search:focus { outline: none; border-color: var(--accent); }
+.active-dir { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
+
+.tree-list { list-style: none; padding: 0; margin: 0; }
+/* The subtitle carries cwd + counts + time; keep it on one line and let the
+   directory be the part that truncates. */
+.tree-sub { display: flex; align-items: baseline; gap: 0; min-width: 0; white-space: nowrap; }
+.cwd {
+  color: var(--muted); overflow: hidden; text-overflow: ellipsis; max-width: 46ch;
+}
+.tree-card {
+  width: 100%; display: flex; flex-direction: column; gap: 2px; text-align: left;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 10px 13px; margin: 4px 0;
+}
+.tree-card:hover { border-color: var(--accent); }
+.tree-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.branch-badge { color: var(--accent); margin-left: 8px; font-weight: 600; }
+.id-short { color: var(--muted); }
+.empty { margin-top: 40px; text-align: center; }
+
+/* ---------------------------------------------------------------- layout */
+
+.app { display: flex; flex-direction: column; height: 100vh; }
+
+.toolbar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  /* Left inset clears the macOS traffic lights (titleBarStyle: hiddenInset). */
+  padding: 8px 12px 8px 84px;
+  border-bottom: 1px solid var(--line); background: var(--panel);
+  -webkit-app-region: drag;
+}
+.toolbar button, .toolbar a, .toolbar select, .toolbar input, .toolbar label {
+  -webkit-app-region: no-drag;
+}
+.toolbar .mark { border-radius: 5px; flex: none; -webkit-app-region: no-drag; }
+.tree-name { font-weight: 600; max-width: 34ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctl { display: flex; align-items: center; gap: 5px; }
+.overlays { display: flex; gap: 3px; }
+.chip {
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--muted);
+  border-radius: 999px; padding: 3px 10px; font-size: 12px;
+}
+.chip.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+.split { display: flex; flex: 1; min-height: 0; }
+
+/* ------------------------------------------------------------ svg canvas */
+
+.canvas { flex: 1; position: relative; min-width: 0; background: var(--bg); overflow: hidden; }
+.canvas.empty { display: flex; align-items: center; justify-content: center; }
+
+.canvas-tools {
+  position: absolute; top: 10px; left: 10px; z-index: 2;
+  display: flex; align-items: center; gap: 4px;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 3px 6px;
+}
+
+.tree-svg { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+.tree-svg:active { cursor: grabbing; }
+
+.edge {
+  fill: none; stroke: var(--line); stroke-width: 1.5;
+}
+.edge.on-path { stroke: var(--accent); stroke-width: 2.5; }
+
+.vnode { cursor: pointer; }
+.vnode .dot { stroke: var(--bg); stroke-width: 2; transition: r 0.12s; }
+.vnode:hover .dot { stroke: var(--fg); }
+.vnode.on-path .dot { stroke: var(--accent); }
+.vnode.dead .dot { opacity: 0.35; }
+.vnode.sidechain .dot { opacity: 0.5; }
+.vnode .halo { fill: none; stroke: var(--accent); stroke-width: 2; }
+.vnode .mark { font-size: 11px; fill: #d8a13a; text-anchor: middle; }
+.vnode .mark.dead { fill: var(--danger); }
+/* Labelled nodes are boxes with the text inside, not dots with text beside. */
+.node-box { stroke: var(--bg); stroke-width: 2; }
+.vnode:hover .node-box { stroke: var(--fg); }
+.vnode.on-path .node-box { stroke: var(--accent); }
+.vnode.dead .node-box { opacity: 0.35; }
+.vnode.sidechain .node-box { opacity: 0.5; }
+.node-box-text {
+  font-size: 11px; font-weight: 600; fill: #fff; text-anchor: middle;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+  pointer-events: none; letter-spacing: -0.01em;
+}
+.halo-box { fill: none; stroke: var(--accent); stroke-width: 2; }
+
+.vchain { cursor: pointer; }
+.chain-line { stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 3 4; }
+.vchain.on-path .chain-line { stroke: var(--accent); stroke-width: 2.5; stroke-dasharray: 4 4; }
+.chain-pill { fill: var(--panel); stroke: var(--line); }
+.vchain:hover .chain-pill { stroke: var(--accent); }
+.chain-count {
+  font-size: 10px; fill: var(--muted); text-anchor: middle;
+  font-family: var(--mono);
+}
+
+.tree-tooltip {
+  position: absolute; bottom: 12px; left: 12px; right: 12px;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 6px 10px; font-size: 12px;
+  pointer-events: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* ---------------------------------------------------------------- panel */
+
+.panel {
+  width: 400px; flex: none; border-left: 1px solid var(--line);
+  background: var(--panel); display: flex; flex-direction: column;
+  overflow-y: auto; min-height: 0;
+}
+.panel-block { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.panel-block.grow { flex: 1; }
+.panel-block h3 {
+  margin: 0 0 8px; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.1em; color: var(--muted);
+}
+
+.session-block { background: var(--panel-2); }
+.kv { display: flex; gap: 8px; align-items: baseline; margin-bottom: 3px; }
+.kv .muted { width: 4ch; flex: none; }
+.id { font-size: 12px; overflow-wrap: anywhere; }
+.path { font-size: 11px; color: var(--muted); overflow-wrap: anywhere; }
+
+.copy-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+.copy {
+  background: var(--panel); border: 1px solid var(--line); color: var(--fg);
+  border-radius: var(--radius); padding: 4px 9px; font-size: 12px;
+}
+.copy:hover { border-color: var(--accent); }
+.copy.done { background: var(--accent); color: #fff; border-color: var(--accent); }
+.hint { margin: 8px 0 0; }
+
+/* Reconstructed from the message queue, not a transcript record: hollow, so a
+   turn you can't resume at never looks like one you can. */
+.vnode.injected .dot { fill: var(--bg); stroke: var(--user); stroke-width: 2.5; }
+.vnode.injected .node-box { fill-opacity: 0.25; stroke: var(--user); }
+.vnode.injected .node-box-text { fill: var(--fg); }
+
+.fork-result {
+  margin-top: 10px; padding: 10px 12px;
+  background: var(--panel-2); border: 1px solid var(--accent); border-radius: var(--radius);
+}
+.fork-result .copy-row { margin-top: 8px; }
+.error-text { color: #d0503a; border-color: #d0503a; }
+
+.panel-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.role {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 0.1em;
+  padding: 1px 6px; border-radius: 3px; border: 1px solid var(--line);
+}
+.role.user { color: var(--user); }
+.role.assistant { color: var(--assistant); }
+.panel-actions { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px; }
+.stats { font-variant-numeric: tabular-nums; }
+
+.label-input {
+  width: 100%; background: var(--panel-2); border: 1px solid var(--accent);
+  border-radius: 4px; padding: 4px 8px; margin: 6px 0;
+}
+
+.panel-body { overflow-wrap: anywhere; }
+.tool-strip { font-family: var(--mono); }
+
+.thinking summary {
+  cursor: pointer; font-size: 11px; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--muted);
+}
+
+@media (max-width: 900px) {
+  .panel { width: 300px; }
+}
+
+/* ------------------------------------------------------- rendered markdown */
+
+.md { font-size: 13px; line-height: 1.62; }
+.md > :first-child { margin-top: 0; }
+.md > :last-child { margin-bottom: 0; }
+
+.md p { margin: 0 0 0.85em; overflow-wrap: anywhere; }
+.md .md-h { margin: 1.4em 0 0.5em; line-height: 1.3; font-weight: 650; }
+.md h1.md-h { font-size: 1.35em; }
+.md h2.md-h { font-size: 1.18em; }
+.md h3.md-h { font-size: 1.06em; }
+.md h4.md-h, .md h5.md-h, .md h6.md-h { font-size: 1em; color: var(--muted); }
+
+.md ul, .md ol { margin: 0 0 0.85em; padding-left: 1.35em; }
+.md li { margin: 0.18em 0; }
+.md li > .md p, .md li > p { margin: 0; }
+.md li > ul, .md li > ol { margin: 0.18em 0 0; }
+
+.md hr { border: 0; border-top: 1px solid var(--line); margin: 1.3em 0; }
+
+.md blockquote {
+  margin: 0 0 0.85em; padding: 0.1em 0 0.1em 0.85em;
+  border-left: 2px solid var(--line); color: var(--muted);
+}
+
+.md a { color: var(--accent); text-decoration: none; }
+.md a:hover { text-decoration: underline; }
+
+.md code {
+  font-family: var(--mono); font-size: 0.88em;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: 4px; padding: 0.08em 0.32em;
+}
+
+.md .md-code {
+  position: relative; margin: 0 0 0.9em; padding: 0.7em 0.8em;
+  background: var(--panel-2); border: 1px solid var(--line);
+  border-radius: var(--radius); overflow-x: auto;
+}
+.md .md-code code {
+  background: none; border: 0; padding: 0;
+  font-size: 12px; line-height: 1.5; white-space: pre;
+}
+.md .md-lang {
+  position: absolute; top: 0; right: 0;
+  font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--muted); padding: 2px 7px;
+}
+
+.md .md-table-wrap { overflow-x: auto; margin: 0 0 0.9em; }
+.md table { border-collapse: collapse; font-size: 12px; }
+.md th, .md td {
+  border: 1px solid var(--line); padding: 4px 8px; text-align: left; vertical-align: top;
+}
+.md th { background: var(--panel-2); font-weight: 600; }
+
+.md del { color: var(--muted); }
+
+/* Thinking keeps its muted treatment, but is markdown now rather than a <pre>. */
+.thinking-body {
+  background: var(--panel-2); border-left: 2px solid var(--line);
+  border-radius: var(--radius); padding: 9px 11px; margin-top: 6px;
+  color: var(--muted); font-size: 12px;
+}
+
+/* "more directories" toggle: reads as a control, not a directory. */
+.dir-more { margin-top: 2px; }
+.dir-more .dir-name { font-size: 12px; }
+.dir-more:hover .dir-name { color: var(--fg); }
+
+/* --------------------------------------------------------------- tip + legend */
+
+/* The conversation's tip: a slow breathing ring, visible without any mode. */
+.tip-ring {
+  fill: none; stroke: var(--assistant); stroke-width: 2; opacity: 0.7;
+  animation: tip-pulse 2.2s ease-in-out infinite;
+  pointer-events: none;
+}
+@keyframes tip-pulse {
+  0%, 100% { opacity: 0.75; transform: scale(1); }
+  50% { opacity: 0.2; transform: scale(1.35); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .tip-ring { animation: none; opacity: 0.6; }
+}
+
+.legend {
+  position: absolute; bottom: 10px; left: 10px; z-index: 2;
+  transition: opacity 0.15s;
+  display: flex; gap: 14px; align-items: center;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 5px 10px;
+}
+.legend span { display: flex; align-items: center; gap: 5px; }
+.lg-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.lg-user { background: var(--user); }
+.lg-assistant { background: var(--assistant); }
+.lg-tip {
+  background: none; border: 2px solid var(--accent);
+  animation: tip-pulse 2.2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) { .lg-tip { animation: none; } }
+.vchain.dead { opacity: 0.35; }
+
+/* Node actions read as buttons: same bordered treatment as the copy chips. */
+.panel-actions button.ghost {
+  border-color: var(--line); color: var(--fg);
+  padding: 4px 9px; font-size: 12px; background: var(--panel);
+}
+.panel-actions button.ghost:hover { border-color: var(--accent); }
+
+.legend-hidden { opacity: 0; pointer-events: none; }
+
+.vnode.user .tip-ring { stroke: var(--user); }
