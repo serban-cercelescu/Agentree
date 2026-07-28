@@ -19,8 +19,51 @@ const PROJECTS = path.join(os.homedir(), ".claude", "projects");
  */
 const QUIET_MS = 250;
 
+/**
+ * Codex needs POLLING, not just fs.watch: its rollout appends are invisible to
+ * macOS FSEvents. Verified empirically (v0.145.0) — with a recursive AND a flat
+ * watch on the rollout's own directory, a live codex turn grew the file by
+ * kilobytes (stat saw it within 200 ms) and neither watcher fired once in 60 s;
+ * an append to the SAME file from another process fired immediately. Codex's
+ * events surface only when it closes the file (exec mode delivers everything in
+ * one burst at process exit). So fs.watch stays — it covers Claude, Copilot,
+ * and codex fork/file creation on close — and a cheap stat sweep of the
+ * codex/copilot roots catches the writes FSEvents never reports.
+ */
+const POLL_MS = 1000;
+
 export interface Watcher {
   close(): void;
+}
+
+/**
+ * Fingerprint every transcript under `dir`: path + size + mtime. A change in
+ * any of them changes the string. Bounded depth (codex is Y/M/D + file = 3,
+ * copilot is <id>/events.jsonl = 2); only transcript extensions are statted,
+ * so a sweep is a few hundred stats — well under a millisecond of syscalls.
+ */
+function treeSignature(dir: string, depth = 0): string {
+  let out = "";
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return out;
+  }
+  for (const e of entries) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      if (depth < 3) out += treeSignature(p, depth + 1);
+    } else if (/\.(jsonl|yaml)$/.test(e.name)) {
+      try {
+        const s = fs.statSync(p);
+        out += `${p}:${s.size}:${s.mtimeMs}\n`;
+      } catch {
+        // deleted mid-sweep; the disappearance shows up as a shorter signature
+      }
+    }
+  }
+  return out;
 }
 
 /**
@@ -35,28 +78,29 @@ export function watchTranscripts(
   sessionId: SessionId | null,
   onChange: () => void,
 ): Watcher {
-  // Targets: (dir, only-this-file filter). For a session, watch the directory
-  // owning its transcript in whichever harness has it. For the welcome screen,
-  // watch all three roots.
-  const targets: { dir: string; only: string | null }[] = [];
+  // Targets: (dir, only-this-file filter, poll). For a session, watch the
+  // directory owning its transcript in whichever harness has it. For the
+  // welcome screen, watch all three roots. Codex/Copilot roots are ALSO
+  // stat-polled — see POLL_MS for why fs.watch alone goes deaf there.
+  const targets: { dir: string; only: string | null; poll: boolean }[] = [];
 
   if (sessionId) {
     const loc = locate(sessionId);
     if (loc) {
-      targets.push({ dir: path.dirname(loc.file), only: path.basename(loc.file) });
+      targets.push({ dir: path.dirname(loc.file), only: path.basename(loc.file), poll: false });
     } else {
       const codex = locateCodex(sessionId);
       // A stitched tree can grow through ANY family member (or a brand-new
       // fork), so a session watch covers the provider's whole root — the
       // parse cache keeps the rescan cheap.
-      if (codex) targets.push({ dir: CODEX_SESSIONS, only: null });
-      else if (locateCopilot(sessionId)) targets.push({ dir: COPILOT_STATE, only: null });
+      if (codex) targets.push({ dir: CODEX_SESSIONS, only: null, poll: true });
+      else if (locateCopilot(sessionId)) targets.push({ dir: COPILOT_STATE, only: null, poll: true });
       else return { close() {} };
     }
   } else {
-    targets.push({ dir: PROJECTS, only: null });
-    targets.push({ dir: CODEX_SESSIONS, only: null });
-    targets.push({ dir: COPILOT_STATE, only: null });
+    targets.push({ dir: PROJECTS, only: null, poll: false });
+    targets.push({ dir: CODEX_SESSIONS, only: null, poll: true });
+    targets.push({ dir: COPILOT_STATE, only: null, poll: true });
   }
 
   let timer: NodeJS.Timeout | null = null;
@@ -67,6 +111,21 @@ export function watchTranscripts(
       onChange();
     }, QUIET_MS);
   };
+
+  const polls: NodeJS.Timeout[] = [];
+  for (const { dir, poll } of targets) {
+    if (!poll || !fs.existsSync(dir)) continue;
+    let sig = treeSignature(dir);
+    polls.push(
+      setInterval(() => {
+        const next = treeSignature(dir);
+        if (next !== sig) {
+          sig = next;
+          fire();
+        }
+      }, POLL_MS),
+    );
+  }
 
   const watchers: fs.FSWatcher[] = [];
   for (const { dir, only } of targets) {
@@ -86,12 +145,13 @@ export function watchTranscripts(
       // Missing directory (harness not installed) — the others still watch.
     }
   }
-  if (watchers.length === 0) return { close() {} };
+  if (watchers.length === 0 && polls.length === 0) return { close() {} };
 
   return {
     close() {
       if (timer) clearTimeout(timer);
       for (const w of watchers) w.close();
+      for (const p of polls) clearInterval(p);
     },
   };
 }

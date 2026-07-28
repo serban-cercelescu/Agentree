@@ -186,7 +186,7 @@ export function TreeCanvas() {
           while it's up rather than stacking under it. */}
       <div className={`legend muted small ${hover ? "legend-hidden" : ""}`}>
         <span><i className="lg-dot lg-user" /> User</span>
-        <span><i className="lg-dot lg-assistant" /> Claude</span>
+        <span><i className="lg-dot lg-assistant" /> Agent</span>
         <span><i className="lg-dot lg-tip" style={{ borderColor: tipColor }} /> latest turn</span>
       </div>
     </div>

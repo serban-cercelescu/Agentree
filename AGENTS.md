@@ -326,6 +326,17 @@ conversation started in another terminal appears on its own.
 
 - The watch is on the *directory*, not the inode — a watch on a file goes deaf
   the moment the file is replaced.
+- **Codex rollouts are watched by stat-polling, not fs.watch.** Codex's
+  appends are invisible to macOS FSEvents: with a recursive AND a flat watch
+  on the rollout's own directory, a live turn grew the file by kilobytes
+  (stat saw it within 200 ms) and neither watcher fired once in 60 s — while
+  an append to the same file from another process fired instantly. Codex's
+  writes surface to FSEvents only when it closes the file (exec mode delivers
+  everything in one burst at process exit — observed: zero events for 9 s,
+  then the whole rollout at exit). So the codex and copilot roots get a
+  1 s stat sweep (path+size+mtime over ~hundreds of transcripts, ~4 ms)
+  alongside the fs.watch, feeding the same debounce. Claude stays on pure
+  fs.watch — its writes fire FSEvents normally.
 - Writes are debounced 250 ms. The CLI appends one record per content block, so
   one reply is a burst; without coalescing the file gets reparsed dozens of
   times per turn.
@@ -462,7 +473,6 @@ file, not a parser bug.
   blank on those trees.
 - `listSessions` parses every transcript per call — 283 files is fine, but it
   wants an mtime-keyed index beyond a thousand.
-- No file watching; sessions re-read on `refresh`.
 - Subagent turns are dimmed but not given their own lane.
 - Not packaged — runs via `npm start`. `electron-builder` would produce a
   `.app`/`.dmg`; not set up yet.

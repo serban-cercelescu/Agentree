@@ -10,6 +10,10 @@
 
 ---
 
+<p align="center">
+  <img src="assets/screenshot.png" alt="Agentree showing a branched Claude Code session: the conversation tree on the left, the selected turn's details and fork command on the right" width="900">
+</p>
+
 **Agentree** is a desktop app that reads the session files your coding agents
 already keep on disk and draws each conversation as an interactive tree —
 every prompt, reply, and branch, across all your projects, in one place.

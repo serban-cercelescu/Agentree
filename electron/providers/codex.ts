@@ -478,13 +478,13 @@ export function forkCodexAt(nodeId: string): ForkResult {
   head.payload.timestamp = iso;
   head.payload.forked_from_id = sid;
 
-  const stamp = iso.slice(0, 19).replace(/:/g, "-");
-  const dir = path.join(
-    SESSIONS,
-    String(now.getFullYear()),
-    String(now.getMonth() + 1).padStart(2, "0"),
-    String(now.getDate()).padStart(2, "0"),
-  );
+  // Codex names rollouts in LOCAL time (both the Y/M/D directory and the
+  // filename stamp). Deriving the stamp from the UTC iso put forks an hour off
+  // their real creation time — and near midnight, in the wrong day's folder.
+  const two = (n: number) => String(n).padStart(2, "0");
+  const day = [String(now.getFullYear()), two(now.getMonth() + 1), two(now.getDate())];
+  const stamp = `${day.join("-")}T${two(now.getHours())}-${two(now.getMinutes())}-${two(now.getSeconds())}`;
+  const dir = path.join(SESSIONS, ...day);
   const out = path.join(dir, `rollout-${stamp}-${newId}.jsonl`);
   try {
     fs.mkdirSync(dir, { recursive: true });
