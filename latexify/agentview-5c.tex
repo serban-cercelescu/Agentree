@@ -1,0 +1,92 @@
+\documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[a4paper,margin=2.4cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage[dvipsnames,svgnames,table]{xcolor}
+\usepackage[most]{tcolorbox}
+\usepackage{enumitem}
+\usepackage{parskip}
+\usepackage[protrusion=true,expansion=false]{microtype}
+\DisableLigatures{encoding = *, family = tt*}
+\usepackage{fancyhdr}
+\usepackage[hidelinks]{hyperref}
+
+%% ---- palette (tweak here) -------------------------------------------------
+\definecolor{userbg}{HTML}{EEF4FF}
+\definecolor{userrule}{HTML}{3B6FB6}
+\definecolor{botrule}{HTML}{9AA4B2}
+\definecolor{titleink}{HTML}{1F2A44}
+\definecolor{softink}{HTML}{5B6472}
+\definecolor{dimink}{HTML}{A6AEBB}
+
+%% ---- prompt (user) box ----------------------------------------------------
+\newtcolorbox{promptbox}{
+  enhanced, breakable, sharp corners,
+  colback=userbg, colframe=userrule,
+  borderline west={2.2pt}{0pt}{userrule},
+  frame hidden, left=10pt, right=10pt, top=7pt, bottom=7pt,
+  fonttitle=\bfseries\sffamily\small\color{userrule},
+  title={\hspace*{-2pt}Prompt}, coltitle=userrule,
+  attach title to upper=\par\smallskip,
+}
+
+%% ---- resume marker (a thin rule where capture resumed after --off) --------
+\newcommand{\resumemark}{%
+  \par\medskip
+  {\centering\color{dimink}\sffamily\scriptsize
+   \rule[0.25ex]{3.2em}{0.4pt}\ \ resumed\ \ \rule[0.25ex]{3.2em}{0.4pt}\par}%
+  \medskip}
+
+%% ---- slash-command chip ---------------------------------------------------
+\newcommand{\cmdchip}[1]{%
+  \par\smallskip\noindent
+  {\sffamily\footnotesize\color{dimink}$\vartriangleright$\,\texttt{#1}}%
+  \par\smallskip}
+
+%% ---- assistant separator --------------------------------------------------
+\newcommand{\botlabel}{%
+  \par\smallskip
+  {\sffamily\bfseries\small\color{botrule}Claude}\;%
+  {\color{botrule}\leaders\hbox{\rule[0.35ex]{1pt}{0.6pt}}\hfill}\par
+  \nopagebreak\smallskip}
+
+%% ---- theorem styling ------------------------------------------------------
+\definecolor{thmrule}{HTML}{6A8D3F}
+\theoremstyle{definition}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}{Lemma}
+\newtheorem{proposition}{Proposition}
+\newtheorem{corollary}{Corollary}
+\newtheorem{definition}{Definition}
+\newtheorem*{remark}{Remark}
+\tcolorboxenvironment{theorem}{
+  enhanced, breakable, sharp corners, boxrule=0pt, frame hidden,
+  colback=thmrule!7, borderline west={2.2pt}{0pt}{thmrule},
+  left=10pt, right=10pt, top=6pt, bottom=6pt, before skip=8pt, after skip=8pt,
+}
+\tcolorboxenvironment{lemma}{enhanced,breakable,sharp corners,boxrule=0pt,frame hidden,colback=thmrule!7,borderline west={2.2pt}{0pt}{thmrule},left=10pt,right=10pt,top=6pt,bottom=6pt,before skip=8pt,after skip=8pt}
+\tcolorboxenvironment{definition}{enhanced,breakable,sharp corners,boxrule=0pt,frame hidden,colback=userrule!7,borderline west={2.2pt}{0pt}{userrule},left=10pt,right=10pt,top=6pt,bottom=6pt,before skip=8pt,after skip=8pt}
+
+\pagestyle{fancy}\fancyhf{}
+\renewcommand{\headrulewidth}{0.4pt}
+\fancyhead[L]{\sffamily\small\color{softink}\SESSIONNAME}
+\fancyhead[R]{\sffamily\small\color{softink}\thepage}
+\fancyfoot[C]{\sffamily\footnotesize\color{softink}\DOCDATE}
+
+\setlength{\headheight}{14pt}
+\newcommand{\SESSIONNAME}{agentview-5c}
+\newcommand{\DOCDATE}{2026-07-28}
+
+\title{\vspace{-1.2cm}{\color{titleink}\sffamily\bfseries agentview-5c}}
+\author{}\date{{\scriptsize\ttfamily\color{dimink}137aee14-853f-48ff-bca4-ba62fbfe3c31}}
+
+\begin{document}
+\maketitle\thispagestyle{fancy}\vspace{-0.6cm}
+
+\begin{promptbox}
+not latexify, there's a web client on my desktop
+\end{promptbox}
+
+
+\end{document}

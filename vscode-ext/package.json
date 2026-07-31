@@ -1,0 +1,53 @@
+{
+  "name": "agentree",
+  "displayName": "Agentree",
+  "description": "See your coding-agent conversations as trees. Fork them anywhere. Claude Code, OpenAI Codex CLI, GitHub Copilot CLI.",
+  "version": "0.1.0",
+  "publisher": "serban-cercelescu",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/serban-cercelescu/Agentree.git"
+  },
+  "homepage": "https://github.com/serban-cercelescu/Agentree",
+  "bugs": {
+    "url": "https://github.com/serban-cercelescu/Agentree/issues"
+  },
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Visualization",
+    "AI",
+    "Other"
+  ],
+  "keywords": [
+    "claude code",
+    "codex",
+    "copilot cli",
+    "conversation tree",
+    "fork",
+    "transcript",
+    "agent",
+    "session"
+  ],
+  "icon": "logo.png",
+  "galleryBanner": {
+    "color": "#12100e",
+    "theme": "dark"
+  },
+  "main": "./dist/extension.cjs",
+  "activationEvents": [],
+  "contributes": {
+    "commands": [
+      {
+        "command": "agentree.open",
+        "title": "Agentree: Open Conversation Trees"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node ../build-vscode.mjs",
+    "package": "npx --yes @vscode/vsce package --no-dependencies"
+  }
+}

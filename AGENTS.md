@@ -27,10 +27,29 @@ shared/types.ts           node/session types + the IPC contract
 shared/render.ts          lineage walks, branch counting, token math
 src/tree-layout.ts        chain compression + tidy layout
 src/components/           TreeCanvas (the SVG) · NodePanel · Toolbar · Welcome
+vscode-ext/               VS Code extension — same providers, same renderer
 ```
 
 `contextIsolation: true`, `nodeIntegration: false`. A viewer that reads your
 entire conversation history shouldn't also hand the page `require`.
+
+### VS Code extension
+
+The Electron split maps one-to-one onto a VS Code extension, built from the
+SAME sources by `build-vscode.mjs` (`npm run build:vscode`): the extension
+host bundles `electron/registry.ts` + `watch.ts` + `meta.ts` (nothing below
+`main.ts`/`preload.ts` imports Electron — keep it that way), and the webview
+runs the unmodified renderer. `vscode-ext/src/shim.ts` implements the exact
+`window.agentree` surface over `postMessage`, loaded as a classic script
+before the module bundle because `src/api.ts` reads `window.agentree` at
+module-eval time. Host-side watchers are token-keyed like the ipcMain map and
+closed on panel dispose. The webview HTML links `index.css` by hand (there is
+no index.html for Vite to inject into), overrides the macOS traffic-light
+insets, and pins the theme vars to VS Code's `body.vscode-dark/-light`
+classes rather than the OS `prefers-color-scheme`. `onUpdateAvailable` is a
+no-op there — the extension updates through VS Code. Package with
+`npm run package` inside `vscode-ext/`; F5 from the repo root launches an
+extension-development host.
 
 ## Three harnesses, one tree model
 

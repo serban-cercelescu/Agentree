@@ -5,3 +5,5 @@ data/
 .DS_Store
 dist-electron/
 TODO.md
+vscode-ext/*.vsix
+vscode-ext/logo.png

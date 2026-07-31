@@ -25,6 +25,7 @@
     "dev:main": "node build-electron.mjs --watch",
     "dev:app": "AGENTVIEW_DEV_URL=http://localhost:5173 electron .",
     "build": "tsc -b && vite build && node build-electron.mjs",
+    "build:vscode": "node build-vscode.mjs",
     "prepare": "node scripts/prepare.mjs",
     "start": "electron .",
     "typecheck": "tsc -b --force"
@@ -34,17 +35,18 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "zustand": "^5.0.2",
     "@types/react": "^18.3.17",
     "@types/react-dom": "^18.3.5",
+    "@types/vscode": "^1.125.0",
     "@vitejs/plugin-react": "^4.3.4",
     "concurrently": "^9.1.0",
     "esbuild": "^0.28.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
-    "vite": "^6.0.5"
+    "vite": "^6.0.5",
+    "zustand": "^5.0.2"
   },
   "main": "dist-electron/main.cjs"
 }
