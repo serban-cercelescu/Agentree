@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { harnessEnv } from "../paths.ts";
 import { configuredPath } from "../settings.ts";
+import { AGENTREE_VERSION } from "../version.ts";
 
 /**
  * Minimal client for `codex app-server` — newline-delimited JSON-RPC over
@@ -166,7 +167,7 @@ async function withAppServer<T>(fn: (c: RpcClient) => Promise<T>): Promise<T> {
   });
   const client = new RpcClient(proc);
   try {
-    await client.request("initialize", { clientInfo: { name: "agentree", version: "0.2.0" } });
+    await client.request("initialize", { clientInfo: { name: "agentree", version: AGENTREE_VERSION } });
     client.notify("initialized");
     return await fn(client);
   } finally {
@@ -185,15 +186,16 @@ export type ForkThreadResult = { ok: true; threadId: string; cwd: string } | { o
 export async function forkThread(opts: { threadId: string; lastTurnId: string }): Promise<ForkThreadResult> {
   try {
     const res = await withAppServer((c) =>
-      c.request<{ thread?: { id?: string; cwd?: string }; cwd?: string }>("thread/fork", {
+      c.request<{ thread?: { id?: unknown; cwd?: unknown } | null; cwd?: unknown }>("thread/fork", {
         threadId: opts.threadId,
         lastTurnId: opts.lastTurnId,
         excludeTurns: true,
       }),
     );
     const id = res.thread?.id;
-    if (!id) return { ok: false, error: "codex app-server returned no thread for the fork." };
-    return { ok: true, threadId: id, cwd: res.cwd ?? res.thread?.cwd ?? "" };
+    if (typeof id !== "string" || !id) return { ok: false, error: "codex app-server returned no thread for the fork." };
+    const cwd = [res.cwd, res.thread?.cwd].find((c) => typeof c === "string") as string | undefined;
+    return { ok: true, threadId: id, cwd: cwd ?? "" };
   } catch (e) {
     return { ok: false, error: e instanceof Error ? e.message : String(e) };
   }

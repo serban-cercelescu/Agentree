@@ -1,0 +1,65 @@
+# Weekly: what Claude Code, Codex and Copilot CLI released since their last
+# review, and whether the contracts Agentree relies on hold in the latest
+# release (scripts/upstream/watch.mjs). One rolling issue, labelled
+# `upstream`, carries the report; it is updated, never duplicated. A broken
+# contract, or anything that could not be determined, also fails the run.
+name: Upstream watch
+
+on:
+  schedule:
+    - cron: "17 6 * * 1" # Mondays, 06:17 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream
+  cancel-in-progress: true
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          cache: npm
+      # The watch's own schema validator; nothing here needs a build.
+      - run: npm ci --ignore-scripts
+      - name: Releases and contracts
+        id: watch
+        # Vendor packages are unpacked with their install scripts off; the
+        # Codex CLI runs only to print its own protocol schema, in a scratch
+        # CODEX_HOME. No account, model call or transcript is involved.
+        run: node scripts/upstream/watch.mjs --report=upstream-report.md
+      - name: Summary
+        if: always()
+        run: cat upstream-report.md >> "$GITHUB_STEP_SUMMARY" || true
+      - name: Rolling issue
+        if: always() && (steps.watch.outputs.attention == 'true' || steps.watch.outcome == 'failure')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          [ -s upstream-report.md ] || echo "The upstream watch failed before writing a report: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > upstream-report.md
+          # With issues turned off, the run's summary is the only report.
+          if [ "$(gh api "repos/$GH_REPO" --jq .has_issues)" != "true" ]; then
+            echo "::notice::Issues are disabled in this repository; the report is in this run's summary only."
+            exit 0
+          fi
+          gh label create upstream --description "Changes in the agents Agentree reads" --color C5DEF5 2>/dev/null || true
+          n=$(gh issue list --label upstream --state open --json number --jq '.[0].number')
+          if [ -n "$n" ]; then
+            gh issue edit "$n" --body-file upstream-report.md
+            gh issue comment "$n" --body "Updated by $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          else
+            gh issue create --title "Upstream watch" --label upstream --body-file upstream-report.md
+          fi

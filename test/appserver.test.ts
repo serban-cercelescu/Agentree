@@ -4,6 +4,8 @@ import { beforeAll, describe, expect, it } from "vitest";
 import os from "node:os";
 import { forkThread } from "../electron/providers/codex-appserver.ts";
 import { writeSettings } from "../electron/settings.ts";
+import { AGENTREE_VERSION } from "../electron/version.ts";
+import baseline from "../scripts/upstream/baseline.json";
 
 /**
  * The real client against a fake `codex app-server` (test/fake-codex): the
@@ -40,6 +42,46 @@ describe("codex app-server client", () => {
     expect(res.threadId).toBe("fake-thread");
     // The fake echoes the params back as the cwd.
     expect(JSON.parse(res.cwd)).toEqual({ threadId: "t-1", lastTurnId: "turn-1", excludeTurns: true });
+  });
+
+  it("sends exactly the messages the upstream watch validates against Codex's schema", async () => {
+    process.env.FAKE_CODEX_MODE = "wire";
+    const fork = baseline.codex.requests["thread/fork"];
+    const res = await forkThread({ threadId: fork.threadId, lastTurnId: fork.lastTurnId });
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    const { initialize } = baseline.codex.requests;
+    // The version is the build's; baseline.json can't state it.
+    const sent = { ...initialize, clientInfo: { ...initialize.clientInfo, version: AGENTREE_VERSION } };
+    expect(JSON.parse(res.cwd)).toEqual([
+      { method: "initialize", params: sent },
+      ...baseline.codex.notifications.map((method) => ({ method })),
+      { method: "thread/fork", params: fork },
+    ]);
+  });
+
+  const replied = (reply: unknown) => {
+    process.env.FAKE_CODEX_REPLY = JSON.stringify(reply);
+    return run("reply");
+  };
+
+  it("works with the smallest answer the upstream watch holds Codex to", async () => {
+    const { least } = baseline.codex.forkResponse;
+    expect(await replied(least)).toEqual({ ok: true, threadId: least.thread.id, cwd: "" });
+  });
+
+  it("takes the first usable cwd, as the watch allows", async () => {
+    const thread = { id: "t", cwd: "/thread" };
+    expect(await replied({ thread, cwd: "/top" })).toMatchObject({ cwd: "/top" });
+    expect(await replied({ thread, cwd: null })).toMatchObject({ cwd: "/thread" });
+    expect(await replied({ thread, cwd: 7 })).toMatchObject({ cwd: "/thread" });
+    expect(await replied({ thread: { id: "t", cwd: {} } })).toMatchObject({ ok: true, cwd: "" });
+  });
+
+  it("refuses an answer that doesn't identify the fork, whatever it holds instead", async () => {
+    for (const thread of [null, undefined, "t", {}, { id: "" }, { id: 7 }, { id: null }, { id: {} }]) {
+      expect(await replied({ thread })).toEqual({ ok: false, error: "codex app-server returned no thread for the fork." });
+    }
   });
 
   it("starts the server on the Codex home Agentree reads, even when only a setting names it", async () => {

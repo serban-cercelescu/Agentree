@@ -1,0 +1,179 @@
+{
+  "about": "What scripts/upstream/watch.mjs compares the latest releases against. reviewed: the newest release whose notes were read for format impact (bump it after reading). The design notes record what was verified on real data, and at which version. See docs/upstream.md.",
+  "packages": {
+    "@anthropic-ai/claude-code": {
+      "provider": "claude",
+      "reviewed": "2.1.296",
+      "notes": "https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md"
+    },
+    "@openai/codex": {
+      "provider": "codex",
+      "reviewed": "0.164.0",
+      "notes": "https://github.com/openai/codex/releases"
+    },
+    "@github/copilot": {
+      "provider": "copilot",
+      "reviewed": null,
+      "notes": "https://github.com/github/copilot-cli/blob/main/changelog.md"
+    }
+  },
+  "extensions": {
+    "anthropic.claude-code": {
+      "provider": "claude",
+      "reviewed": "2.1.310",
+      "notes": "https://github.com/anthropics/claude-code/blob/main/CHANGELOG.md"
+    },
+    "openai.chatgpt": {
+      "provider": "codex",
+      "reviewed": "26.1021.22027",
+      "notes": "https://developers.openai.com/codex/changelog"
+    }
+  },
+  "codex": {
+    "about": "The messages electron/providers/codex-appserver.ts sends, with sample values. test/appserver.test.ts holds them equal to what the client sends; the watch validates them against the schema Codex generates. forkResponse: what forkThread needs of the answer: the types it can use of each field it reads (reads), and the smallest answer it can work with (least), which the same test holds it to. Both cwds have fallbacks; the thread id has none.",
+    "requests": {
+      "initialize": {
+        "clientInfo": {
+          "name": "agentree",
+          "version": "0.0.0"
+        }
+      },
+      "thread/fork": {
+        "threadId": "thread-1",
+        "lastTurnId": "turn-1",
+        "excludeTurns": true
+      }
+    },
+    "notifications": [
+      "initialized"
+    ],
+    "forkResponse": {
+      "least": {
+        "thread": {
+          "id": "thread-2"
+        }
+      },
+      "reads": {
+        "thread": [
+          "object"
+        ],
+        "thread.id": [
+          "string"
+        ],
+        "thread.cwd": [
+          "string",
+          "null"
+        ],
+        "cwd": [
+          "string",
+          "null"
+        ]
+      }
+    }
+  },
+  "copilot": {
+    "readEvents": {
+      "user.message": [
+        "content"
+      ],
+      "assistant.message": [
+        "content",
+        "toolRequests"
+      ],
+      "assistant.turn_end": [],
+      "session.start": [
+        "sessionId"
+      ],
+      "session.usage_checkpoint": [],
+      "tool.execution_start": [],
+      "tool.execution_complete": []
+    },
+    "about": "persistedEvents: the non-ephemeral session event types of @github/copilot-sdk 1.0.28 (2026-10-28).",
+    "persistedEvents": [
+      "assistant.fusion_phase_completed",
+      "assistant.fusion_phase_failed",
+      "assistant.message",
+      "assistant.reasoning",
+      "assistant.turn_end",
+      "assistant.turn_start",
+      "external_tool.completed",
+      "external_tool.requested",
+      "hook.end",
+      "hook.start",
+      "human_response.recorded",
+      "instruction.update",
+      "mcp.oauth_recovery_completed",
+      "permission.completed",
+      "permission.requested",
+      "session.auto_mode_resolved",
+      "session.autopilot_objective_changed",
+      "session.binary_asset",
+      "session.canvas.recorded",
+      "session.canvas.removed",
+      "session.compaction_complete",
+      "session.compaction_start",
+      "session.completion_receipt",
+      "session.context_changed",
+      "session.context_cleared",
+      "session.error",
+      "session.fusion_completed",
+      "session.fusion_resolved",
+      "session.fusion_route_failed",
+      "session.handoff",
+      "session.info",
+      "session.mode_changed",
+      "session.mode_notice_delivered",
+      "session.model_change",
+      "session.model_deselected",
+      "session.permission_recovery",
+      "session.permissions_changed",
+      "session.plan_changed",
+      "session.remote_steerable_changed",
+      "session.resume",
+      "session.schedule_cancelled",
+      "session.schedule_created",
+      "session.schedule_rearmed",
+      "session.session_limits_changed",
+      "session.shutdown",
+      "session.start",
+      "session.task_complete",
+      "session.truncation",
+      "session.usage_checkpoint",
+      "session.warning",
+      "session.workspace_file_changed",
+      "skill.invoked",
+      "subagent.completed",
+      "subagent.configured",
+      "subagent.deselected",
+      "subagent.failed",
+      "subagent.selected",
+      "subagent.started",
+      "system.message",
+      "system.notification",
+      "tool.execution_complete",
+      "tool.execution_start",
+      "tool.user_requested",
+      "tool_search.activated",
+      "user.message"
+    ]
+  },
+  "claude": {
+    "literals": [
+      "parentUuid",
+      "logicalParentUuid",
+      "compact_boundary",
+      "queued_command",
+      "promptId",
+      "forkedFrom",
+      "neutralizedByFork",
+      "custom-title"
+    ],
+    "about": "unknownTypesSeen: record types @anthropic-ai/claude-agent-sdk 0.3.312 writes that KNOWN_TYPES lacks, already reported once.",
+    "unknownTypesSeen": [
+      "content-replacement",
+      "history-suppression",
+      "relocated",
+      "tools-used"
+    ]
+  }
+}
