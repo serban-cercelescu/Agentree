@@ -1,21 +1,25 @@
 import crypto from "node:crypto";
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
-import { childIndex, countBranchPoints } from "../../shared/render.ts";
+import { assignTips, childIndex, copyHolders, countBranchPoints, forkSummaries } from "../../shared/render.ts";
 import type {
   ForkResult,
+  MemberInfo,
+  ProviderHealth,
   SessionDetail,
   SessionId,
   SessionMeta,
   TurnNode,
 } from "../../shared/types.ts";
 import { mergeSameRoleRuns } from "../transcripts.ts";
-import { readMeta } from "../meta.ts";
+import { applyAnnotations } from "../meta.ts";
+import { HealthScan } from "../health.ts";
 import { readLineage, recordLineage } from "../lineage.ts";
+import { copilotState } from "../paths.ts";
+import { resumeCommandFor } from "../launch.ts";
+import { assignStableIds, foldedTextKey, textKey } from "../identity.ts";
 import { stitchFamily, type FamilyMember } from "./stitch.ts";
 
-export const STATE = path.join(os.homedir(), ".copilot", "session-state");
 
 /**
  * Copilot CLI session: a directory `~/.copilot/session-state/<uuid>/` holding
@@ -88,7 +92,16 @@ interface ParsedSession {
   /** For each turn, the index of the LAST event line belonging to it. */
   endLine: number[];
   touchedAt: number;
+  /** Newest conversational event (`ACTIVITY`); 0 if none. */
+  activeAt: number;
 }
+
+/**
+ * Events that are the conversation — messages, turns, tool and subagent
+ * activity — as opposed to session, hook, permission, skill and system
+ * bookkeeping. Checked against real Copilot CLI event logs.
+ */
+const ACTIVITY = /^(user|assistant|tool|external_tool|subagent)\./;
 
 function parseEvents(dir: string): ParsedSession | null {
   const ws = readWorkspace(dir);
@@ -103,6 +116,7 @@ function parseEvents(dir: string): ParsedSession | null {
   const nodes: TurnNode[] = [];
   const endLine: number[] = [];
   let touchedAt = 0;
+  let activeAt = 0;
   const lines = raw.split("\n");
 
   for (let i = 0; i < lines.length; i++) {
@@ -115,6 +129,7 @@ function parseEvents(dir: string): ParsedSession | null {
     }
     const ts = ev.timestamp ? Date.parse(ev.timestamp) : 0;
     if (ts > touchedAt) touchedAt = ts;
+    if (ts > activeAt && ev.type && ACTIVITY.test(ev.type)) activeAt = ts;
 
     if (ev.type === "user.message" || ev.type === "assistant.message") {
       const text = (ev.data?.content ?? "").trim();
@@ -140,7 +155,7 @@ function parseEvents(dir: string): ParsedSession | null {
     }
   }
 
-  return { ws, nodes, endLine, touchedAt };
+  return { ws, nodes, endLine, touchedAt, activeAt };
 }
 
 const parses = new Map<string, { mtimeMs: number; size: number; parsed: ParsedSession }>();
@@ -161,10 +176,11 @@ function parsed(dir: string): ParsedSession | null {
 }
 
 function sessionDirs(): string[] {
-  if (!fs.existsSync(STATE)) return [];
+  const root = copilotState();
+  if (!fs.existsSync(root)) return [];
   return fs
-    .readdirSync(STATE)
-    .map((d) => path.join(STATE, d))
+    .readdirSync(root)
+    .map((d) => path.join(root, d))
     .filter((d) => {
       try {
         return fs.statSync(d).isDirectory();
@@ -176,7 +192,7 @@ function sessionDirs(): string[] {
 
 export function locateCopilot(sessionId: SessionId): string | null {
   if (!/^[a-zA-Z0-9-]{8,64}$/.test(sessionId)) return null;
-  const dir = path.join(STATE, sessionId);
+  const dir = path.join(copilotState(), sessionId);
   return fs.existsSync(path.join(dir, "workspace.yaml")) ? dir : null;
 }
 
@@ -227,19 +243,20 @@ function stitched(fam: Family): TurnNode[] {
   for (const m of fam.members) {
     const p = parsed(m.dir);
     if (!p) continue;
+    // A fork rewrites event ids, so identity is the text chain — the same in
+    // the copied prefix. (Copies: the parse is cached.)
+    const nodes = p.nodes.map((n) => ({ ...n }));
+    assignStableIds(nodes, (n) => ({ key: textKey(n), strong: false, earlier: [foldedTextKey(n)] }));
     members.push({
       sessionId: m.ws.id,
       parentSessionId: m.ws.id === fam.rootId ? null : m.ws.forkedFrom,
-      nodes: p.nodes,
+      nodes,
     });
   }
   return mergeSameRoleRuns(stitchFamily(members));
 }
 
-const resumeCmd = (id: string, cwd: string) => {
-  const resume = `copilot --resume=${id}`;
-  return cwd ? `cd ${JSON.stringify(cwd)} && ${resume}` : resume;
-};
+const resumeCmd = (id: string, cwd: string) => resumeCommandFor("copilot", id, cwd);
 
 function metaFor(fam: Family): SessionMeta | null {
   const rootMember = fam.members.find((m) => m.ws.id === fam.rootId);
@@ -250,10 +267,13 @@ function metaFor(fam: Family): SessionMeta | null {
   // Always via stitched(): it copies nodes before the merge mutates them,
   // protecting the parse cache. (A single-member family stitches to itself.)
   const nodes = stitched(fam);
-  let updatedAt = 0;
+  let activeAt = 0;
+  let touchedAt = 0;
   for (const m of fam.members) {
     const p = parsed(m.dir);
-    if (p && p.touchedAt > updatedAt) updatedAt = p.touchedAt;
+    if (!p) continue;
+    activeAt = Math.max(activeAt, p.activeAt || p.touchedAt);
+    touchedAt = Math.max(touchedAt, p.touchedAt);
   }
 
   const firstUser = rootParsed.nodes.find((n) => n.role === "user");
@@ -268,21 +288,54 @@ function metaFor(fam: Family): SessionMeta | null {
     cwd: rootMember.ws.cwd,
     project: rootMember.ws.cwd ? path.basename(rootMember.ws.cwd) : "copilot",
     title,
-    updatedAt,
+    activeAt,
+    touchedAt,
     nodeCount: nodes.length,
     branchPoints: countBranchPoints(childIndex(nodes)),
     resumeCommand: resumeCmd(fam.rootId, rootMember.ws.cwd),
+    members: fam.members.length,
+    forks: forkSummaries(membersOf(fam), fam.rootId),
+    entrypoint: "copilot-cli",
   };
+}
+
+function membersOf(fam: Family): MemberInfo[] {
+  return fam.members.map((m) => {
+    const p = parsed(m.dir);
+    return {
+      id: m.ws.id,
+      title: m.ws.name || p?.nodes.find((n) => n.role === "user")?.text.slice(0, 90) || "Untitled",
+      parentId: m.ws.id === fam.rootId ? null : m.ws.forkedFrom,
+      // Agentree wrote it when it made the copy (lineage sidecar).
+      parentEvidence: m.ws.id !== fam.rootId && m.ws.forkedFrom ? "explicit" : undefined,
+      cwd: m.ws.cwd,
+      resumeCommand: resumeCmd(m.ws.id, m.ws.cwd),
+      activeAt: (p?.activeAt || p?.touchedAt) ?? 0,
+      touchedAt: p?.touchedAt ?? 0,
+    };
+  });
 }
 
 // ------------------------------------------------------------------ API
 
+let lastHealth: ProviderHealth | null = null;
+export const copilotHealth = (): ProviderHealth =>
+  lastHealth ?? new HealthScan("copilot", copilotState()).done();
+
 export function listCopilotSessions(): SessionMeta[] {
+  const health = new HealthScan("copilot", copilotState());
   const out: SessionMeta[] = [];
   for (const fam of families().values()) {
+    for (const m of fam.members) {
+      health.file();
+      if (parsed(m.dir)?.nodes.length) health.parsed();
+      else health.skipped();
+    }
     const meta = metaFor(fam);
     if (meta) out.push(meta);
   }
+  health.listed(out.length);
+  lastHealth = health.done();
   return out;
 }
 
@@ -296,14 +349,11 @@ export function loadCopilotSession(sessionId: SessionId): SessionDetail | null {
   if (!meta) return null;
 
   const nodes = stitched(fam);
-  for (const m of fam.members) {
-    const annotations = readMeta(m.ws.id);
-    for (const n of nodes) {
-      const a = annotations[n.id] ?? n.absorbedIds?.map((id) => annotations[id]).find(Boolean);
-      if (a) Object.assign(n, a);
-    }
-  }
-  return { meta, nodes };
+  for (const n of nodes) n.heldBy = copyHolders(n);
+  applyAnnotations(nodes, fam.members.map((m) => m.ws.id));
+  const members = membersOf(fam);
+  assignTips(nodes, members);
+  return { meta, nodes, members };
 }
 
 // ------------------------------------------------------------------ fork
@@ -352,7 +402,7 @@ export function forkCopilotAt(sessionId: SessionId, nodeId: string): ForkResult 
   const p = parsed(owner.dir)!;
   const cut = p.endLine[idx];
   const newId = crypto.randomUUID();
-  const dst = path.join(STATE, newId);
+  const dst = path.join(copilotState(), newId);
 
   try {
     fs.mkdirSync(dst);

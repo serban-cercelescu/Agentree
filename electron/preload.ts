@@ -1,6 +1,7 @@
+/// <reference lib="dom" />
 import { contextBridge, ipcRenderer } from "electron";
 import { CH } from "./ipc.ts";
-import type { AgentreeApi, NodeMeta } from "../shared/types.ts";
+import type { AgentreeApi, NodeMeta, SettingsPatch } from "../shared/types.ts";
 
 /**
  * The entire renderer→main surface. Nothing else crosses: no `require`, no
@@ -11,7 +12,14 @@ const api: AgentreeApi = {
   getSession: (id) => ipcRenderer.invoke(CH.getSession, id),
   patchNode: (sessionId, nodeId, patch: NodeMeta) =>
     ipcRenderer.invoke(CH.patchNode, sessionId, nodeId, patch),
-  forkAt: (sessionId, nodeId) => ipcRenderer.invoke(CH.forkAt, sessionId, nodeId),
+  forkAt: (sessionId, point) => ipcRenderer.invoke(CH.forkAt, sessionId, point),
+  providerHealth: () => ipcRenderer.invoke(CH.providerHealth),
+  getSettings: () => ipcRenderer.invoke(CH.getSettings),
+  setSettings: (patch: SettingsPatch) => ipcRenderer.invoke(CH.setSettings, patch),
+
+  host: "electron",
+  openNative: (ref) => ipcRenderer.invoke(CH.openNative, ref),
+  resumeInTerminal: (ref) => ipcRenderer.invoke(CH.resumeInTerminal, ref),
 
   onUpdateAvailable: (cb) => {
     const listener = (_e: unknown, info: Parameters<typeof cb>[0]) => cb(info);
@@ -37,5 +45,11 @@ const api: AgentreeApi = {
 };
 
 let watchSeq = 0;
+
+// The page styles for the OS it runs on — macOS reserves room for the inset
+// traffic lights, which other platforms don't have.
+window.addEventListener("DOMContentLoaded", () => {
+  document.documentElement.dataset.platform = process.platform;
+});
 
 contextBridge.exposeInMainWorld("agentree", api);

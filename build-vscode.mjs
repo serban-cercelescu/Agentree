@@ -1,7 +1,8 @@
 // Builds the VS Code extension out of the same sources as the Electron app:
-// the extension host bundles electron/registry + watch + meta (pure Node — no
-// Electron import anywhere below main/preload), and the webview is the
-// unmodified renderer plus a postMessage shim for `window.agentree`.
+// the extension host's backend worker bundles electron/registry and the
+// providers (pure Node — no Electron import anywhere below main/preload), and
+// the webview is the unmodified renderer plus a postMessage shim for
+// `window.agentree`.
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
 import react from "@vitejs/plugin-react";
@@ -31,13 +32,16 @@ await viteBuild({
 });
 
 // Extension host: CommonJS for VS Code's require(), only `vscode` external.
+// The providers go in worker.cjs — the backend thread the host starts — so
+// scanning never runs on the shared extension-host thread.
 await esbuild({
-  entryPoints: ["vscode-ext/src/extension.ts"],
+  entryPoints: { extension: "vscode-ext/src/extension.ts", worker: "electron/worker.ts" },
   bundle: true,
   platform: "node",
-  target: "node20",
+  target: "node22",
   format: "cjs",
-  outfile: path.join(OUT, "extension.cjs"),
+  outdir: OUT,
+  outExtension: { ".js": ".cjs" },
   external: ["vscode"],
   sourcemap: true,
   logLevel: "info",

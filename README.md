@@ -4,91 +4,111 @@
 
 <h1 align="center">Agentree</h1>
 
-<p align="center">
-  See your coding-agent conversations as trees. Fork them anywhere.
-</p>
-
----
+<p align="center">See your coding-agent conversations as trees.</p>
 
 <p align="center">
-  <img src="assets/screenshot.png" alt="Agentree showing a branched Claude Code session: the conversation tree on the left, the selected turn's details and fork command on the right" width="900">
+  <img src="assets/screenshot.png" alt="Agentree showing a branched Claude Code session: the conversation tree on the left, the selected turn's details and fork actions on the right" width="900">
 </p>
 
-**Agentree** is a desktop app that reads the session files your coding agents
-already keep on disk and draws each conversation as an interactive tree —
-every prompt, reply, and branch, across all your projects, in one place.
+**Agentree** reads the session history your coding agents keep on disk and
+draws conversations as interactive trees, across your projects. It runs as a
+**VS Code extension** (the primary product) or a standalone Electron desktop app.
 
-Select any turn and Agentree hands you a ready-to-paste command that resumes
-the conversation **from that exact point**, as a new branch. Explore an idea,
-rewind, try another path — without losing anything.
+Forks made in the agents' chat panels become separate sessions. Agentree uses
+shared-history evidence to join each family into one tree, alongside Claude
+rewinds and Codex prompt-edit branches. Search fork names, read a path, annotate
+useful turns, and hand a session back to its agent. Where supported, fork after
+a selected turn to continue a different path.
 
-Supported harnesses:
+| Agent | History and branches | Fork support |
+|---|---|---|
+| **Claude Code**, extension or CLI | JSONL transcripts, rewinds, copied “Fork conversation” sessions | New transcript in the extension's fork format |
+| **OpenAI Codex**, extension or CLI | Plain/compressed rollout pages, forks and prompt edits, archived bases | Official `codex app-server` whole-turn fork |
+| **GitHub Copilot CLI** | Event logs and copy-truncated forks | Copied session directory; resume command |
 
-| Agent | Session store | Resume / fork |
-|-------|---------------|----------------|
-| **Claude Code** | `~/.claude/projects` | branches natively inside one session |
-| **OpenAI Codex CLI** | `~/.codex/sessions` | fork becomes a new session, drawn as one tree |
-| **GitHub Copilot CLI** | `~/.copilot/session-state` | fork becomes a new session, drawn as one tree |
+VS Code Copilot Chat is not supported. The [guide](docs/user-guide.md) covers
+navigation, fork names/tags, settings, health warnings, host differences and
+[limitations](docs/user-guide.md#limitations).
 
-## Features
+## Using it in VS Code
 
-- **One list, three harnesses** — every conversation on your machine, newest
-  first, filterable by project directory, with live updates as agents run.
-- **Tree view** — branches are first-class: long linear runs collapse into
-  compact chains, branch points stay visible, and the current tip is
-  highlighted.
-- **Fork after any turn** — one click produces the exact CLI command that
-  continues the conversation from that turn as a new branch. Nothing is
-  modified or deleted; forks are strictly additive.
-- **Read the conversation** — full Markdown rendering of any turn, its
-  thinking and tool calls, plus a "view conversation up to here" reader for
-  the whole prefix.
-- **Annotate** — star turns, label branches, and mark dead ends (dimming the
-  whole abandoned subtree). Annotations live in a sidecar, never in your
-  transcripts.
-- **Token overlays** — per-turn context size, prompt cost, and cache-hit
-  rates, straight from the transcripts.
+Requirements: **VS Code 1.101+**, plus **Node.js 22.15+** and git to build.
+The extension uses VS Code's bundled Node; a newer system Node cannot add
+compressed-Codex support to an older VS Code. Windows, macOS and Linux are
+supported targets; native hand-off verification varies by platform.
 
-## Privacy
-
-Agentree runs entirely on your machine. No API keys, no accounts, no
-telemetry. Your transcripts are never modified: annotations go to
-`~/.agentree/`, and forking (for harnesses that need it) only ever *creates*
-a new session file.
-
-The only network request is a version check against GitHub at launch (does
-`main` have newer commits than this build?). Nothing about you or your
-sessions is sent, and it fails silently offline. Set
-`AGENTREE_NO_UPDATE_CHECK=1` to disable it entirely.
-
-## Installation
-
-Requirements: [Node.js](https://nodejs.org) 20 or later, git.
+Build the revision you intend to run. These commands package the current checkout:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/serban-cercelescu/Agentree/main/scripts/install.sh | sh
-```
-
-That's the whole install — it clones the source, builds it, and puts
-`agentree` on your PATH. Then:
-
-```sh
-agentree
-```
-
-The app opens and finds your sessions automatically; harnesses that aren't
-installed are simply skipped. `agentree --foreground` keeps it attached to
-the terminal with logs. Re-run the installer any time to update — the app
-also checks GitHub on launch and shows a notice when a newer build exists.
-
-### From a clone
-
-```sh
-git clone https://github.com/serban-cercelescu/Agentree.git
+git clone https://github.com/Sadeeptha-B/Agentree.git
 cd Agentree
-npm install        # installs dependencies and builds the app
-npm link           # optional: put `agentree` on your PATH
-agentree
+npm install
+npm run build:vscode
+cd vscode-ext
+npm run package
+code --install-extension agentree-0.2.0.vsix
 ```
 
-`npm run dev` starts the hot-reload development setup.
+Use the `.vsix` filename produced by packaging if the version changes. Reload
+VS Code if prompted, then run **Agentree: Open Conversation Trees** from the
+Command Palette (Ctrl/Cmd+Shift+P). Existing histories are discovered from
+their default locations; [configuration](docs/user-guide.md#settings-and-data-locations)
+covers custom roots.
+
+1. Search a title or fork name; combine the agent chips and project-directory rail.
+2. Open a family, drag to pan, scroll to zoom, and click dotted chains to expand.
+3. Select a turn to read its path. Check the panel's **Session** before Open/Resume:
+   those actions continue that session's current path. To continue an older
+   branch, use **fork after this turn**, subject to the displayed restrictions.
+
+The [user guide](docs/user-guide.md) explains the complete workflows and
+limitations, including shared nodes and quiet forks.
+
+## Desktop app
+
+From the repository root:
+
+```sh
+npm install       # prepare also builds the Electron app
+npm start
+```
+
+Optionally run `npm link` to install the `agentree` launcher for this checkout.
+Electron uses the same list, tree and providers. Open-in-chat hands off to
+VS Code; Resume opens an OS terminal. Automatic opening of new forks defaults
+off on desktop and on in VS Code, and can be changed in settings.
+
+The desktop launch update check is optional. See the guide for
+[desktop/update behavior](docs/user-guide.md#desktop-and-updates), the POSIX
+installer, and [Electron startup troubleshooting](docs/user-guide.md#6-if-something-looks-off).
+There is no packaged desktop installer yet.
+
+## Privacy and data ownership
+
+Agentree itself needs no API keys/accounts and sends no telemetry or
+conversation content. Original harness transcripts and databases are never
+edited: annotations/settings/lineage live in Agentree's own home; Claude and
+Copilot forks create new files/directories; Codex creates its forks through
+its own API. Continuing in a vendor agent uses that agent's own runtime and account.
+
+The VS Code extension makes no network requests. The desktop app's optional
+launch update check contacts the GitHub repository it was built from. Its
+switch and environment override are documented in the
+[settings guide](docs/user-guide.md#settings-and-data-locations).
+
+## Working on Agentree
+
+- [AGENTS.md](AGENTS.md): commands, code map, safe fixture homes and required checks.
+- [Design notes](docs/design.md): architecture, identities, provider research,
+  persistence and the reasons behind consequential decisions.
+- [Remaining work](docs/roadmap.md): verification gaps, durability follow-ups and deferred features.
+- [Historical record](docs/archive/2026-10-modernize/README.md): retained handoffs,
+  reviews/resolutions, completed roadmap and documentation proposal.
+
+`CLAUDE.md` imports `AGENTS.md`; both hosts share the same implementation.
+
+## Credits
+
+Agentree was created by [Serban Cercelescu](https://github.com/serban-cercelescu/Agentree).
+This fork modernizes it for Claude Code and Codex extension histories.
+MIT licensed; see [LICENSE](LICENSE).

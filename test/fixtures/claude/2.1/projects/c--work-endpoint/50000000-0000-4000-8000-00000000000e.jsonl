@@ -1,0 +1,2 @@
+{"parentUuid":null,"isSidechain":false,"cwd":"C:\\work\\demo","sessionId":"50000000-0000-4000-8000-00000000000e","version":"2.1.310","entrypoint":"claude-vscode","promptId":"up-1","type":"user","message":{"role":"user","content":"First ask"},"uuid":"uf-u1","timestamp":"2026-10-01T10:30:00.000Z","forkedFrom":{"sessionId":"50000000-0000-4000-8000-00000000000d","messageUuid":"up-u1"}}
+{"type":"custom-title","sessionId":"50000000-0000-4000-8000-00000000000e","customTitle":"Asks (fork)"}

@@ -18,8 +18,8 @@ Usage: agentree [--foreground]
   --foreground   stay attached to the terminal and print app logs
   --help         show this help
 
-Reads sessions from ~/.claude/projects, ~/.codex/sessions, and
-~/.copilot/session-state. https://github.com/serban-cercelescu/Agentree`);
+Reads sessions from ~/.claude/projects, ~/.codex/sessions (and
+archived_sessions), and ~/.copilot/session-state. https://github.com/Sadeeptha-B/Agentree`);
   process.exit(0);
 }
 
@@ -34,9 +34,14 @@ if (!fs.existsSync(path.join(appDir, "dist-electron", "main.cjs"))) {
   process.exit(1);
 }
 
+// Started from inside VS Code, the environment can carry
+// ELECTRON_RUN_AS_NODE=1, which makes the Electron binary run as plain Node.
+const env = { ...process.env };
+delete env.ELECTRON_RUN_AS_NODE;
+
 if (args.includes("--foreground")) {
-  const child = spawn(electron, [appDir], { stdio: "inherit" });
+  const child = spawn(electron, [appDir], { stdio: "inherit", env });
   child.on("exit", (code) => process.exit(code ?? 0));
 } else {
-  spawn(electron, [appDir], { detached: true, stdio: "ignore" }).unref();
+  spawn(electron, [appDir], { detached: true, stdio: "ignore", env }).unref();
 }

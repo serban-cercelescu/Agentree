@@ -1,0 +1,5 @@
+{"timestamp":"2026-10-01T10:00:00.000Z","type":"session_meta","payload":{"id":"01800000-0000-7000-8000-000000000001","cwd":"C:\\work\\codex-demo","cli_version":"0.145.0"}}
+{"timestamp":"2026-10-01T10:01:00.000Z","type":"event_msg","payload":{"type":"user_message","message":"Legacy hello"}}
+{"timestamp":"2026-10-01T10:02:00.000Z","type":"event_msg","payload":{"type":"agent_message","message":"Legacy hi."}}
+{"timestamp":"2026-10-01T10:03:00.000Z","type":"event_msg","payload":{"type":"user_message","message":"Legacy parent continues"}}
+{"timestamp":"2026-10-01T10:04:00.000Z","type":"event_msg","payload":{"type":"agent_message","message":"Parent reply."}}

@@ -2,9 +2,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useStore } from "../store.ts";
 import { newestLeaf, pathToRoot, shortLabel } from "../../shared/render.ts";
 import {
-  BOX_H, buildLayout, CHAIN_ROWS, edgePath, nodeLabel, nodeWidth,
-  onSelectedPath, PAD, ROW_H, type VNode,
+  BOX_H, buildLayout, CHAIN_ROWS, edgePath, forkTags, nodeLabel, nodeWidth,
+  onSelectedPath, PAD, ROW_H, tagBox, type VNode,
 } from "../tree-layout.ts";
+import type { MemberInfo } from "../../shared/types.ts";
 
 interface View {
   tx: number;
@@ -28,11 +29,19 @@ export function TreeCanvas() {
     [selected, nodes],
   );
 
-  // Geometry depends only on tree shape and what's expanded. `pathIds` feeds
-  // edge highlighting; it never moves anything.
+  // Each fork's first turn is tagged with its session's title, so the tree
+  // says WHICH chat a dashed edge starts, not just where.
+  const tags = useMemo(
+    () => forkTags(session?.nodes ?? [], session?.members ?? []),
+    [session],
+  );
+  const members = useMemo(() => new Map((session?.members ?? []).map((m) => [m.id, m])), [session]);
+
+  // Geometry depends only on tree shape, tags and what's expanded. `pathIds`
+  // feeds edge highlighting; it never moves anything.
   const layout = useMemo(
-    () => buildLayout({ children, pathIds, expanded, compress }),
-    [children, pathIds, expanded, compress],
+    () => buildLayout({ children, tags, pathIds, expanded, compress }),
+    [children, tags, pathIds, expanded, compress],
   );
 
   // The conversation's tip — where a plain `--resume` would continue. Marked
@@ -42,6 +51,8 @@ export function TreeCanvas() {
     [session, children],
   );
   const tipColor = (tip && nodes.get(tip)?.role === "user") ? "var(--user)" : "var(--assistant)";
+  // The legend only explains dashed edges when the tree actually has one.
+  const hasCross = layout.edges.some((e) => e.cross);
 
   // A dead-end mark covers the whole exploration beneath it: everything under
   // a marked turn is equally abandoned, so the subtree dims as one.
@@ -145,7 +156,7 @@ export function TreeCanvas() {
               <path
                 key={i}
                 d={edgePath(e.from, e.to)}
-                className={`edge ${e.onPath ? "on-path" : ""}`}
+                className={`edge ${e.onPath ? "on-path" : ""} ${e.cross ? "cross" : ""}`}
               />
             ))}
           </g>
@@ -165,6 +176,7 @@ export function TreeCanvas() {
                 <Node
                   key={v.id}
                   v={v}
+                  tag={tags.get(v.id)}
                   onPath={pathIds.has(v.id)}
                   isSelected={v.id === selected}
                   isTip={v.id === tip}
@@ -178,7 +190,7 @@ export function TreeCanvas() {
         </g>
       </svg>
 
-      {hover && <Tooltip v={hover} />}
+      {hover && <Tooltip v={hover} members={members} />}
 
       {/* Always-on legend instead of overlay modes: everything the drawing
           encodes, decoded in one quiet line. */}
@@ -188,6 +200,11 @@ export function TreeCanvas() {
         <span><i className="lg-dot lg-user" /> User</span>
         <span><i className="lg-dot lg-assistant" /> Agent</span>
         <span><i className="lg-dot lg-tip" style={{ borderColor: tipColor }} /> latest turn</span>
+        {hasCross && (
+          <span title="The dashed edge enters a fork (a new session), or a Codex prompt edit (a new branch of the same thread)">
+            <i className="lg-cross" /> fork / edited branch
+          </span>
+        )}
       </div>
     </div>
   );
@@ -195,6 +212,7 @@ export function TreeCanvas() {
 
 function Node({
   v,
+  tag,
   onPath,
   isSelected,
   isTip,
@@ -203,6 +221,7 @@ function Node({
   onHover,
 }: {
   v: Extract<VNode, { kind: "node" }>;
+  tag?: string;
   onPath: boolean;
   isSelected: boolean;
   isTip: boolean;
@@ -219,6 +238,8 @@ function Node({
   // box drawn here is exactly the box siblings were spaced around.
   const label = nodeLabel(n);
   const box = { w: nodeWidth(n), h: BOX_H };
+  const mark = n.status === "favorite" ? "★" : n.status === "dead-end" ? "✕" : null;
+  const tagAt = tag ? tagBox(n, tag) : null;
 
   return (
     <g
@@ -275,11 +296,22 @@ function Node({
           <circle r={r} fill={fill} className="dot" />
         </>
       )}
-      {n.status === "favorite" && (
-        <text className="mark" y={-(label ? box.h / 2 + 5 : 12)}>★</text>
-      )}
-      {n.status === "dead-end" && (
-        <text className="mark dead" y={-(label ? box.h / 2 + 5 : 12)}>✕</text>
+      {tag && tagAt ? (
+        // The tag takes the place a ★ / ✕ mark would float in, so the mark
+        // rides inside it (its width budgets for one).
+        <g className="fork-tag">
+          <rect x={tagAt.x} y={tagAt.y} width={tagAt.w} height={tagAt.h} rx={4} />
+          <text y={tagAt.y + tagAt.h - 3}>
+            {mark && <tspan className={`mark ${n.status === "dead-end" ? "dead" : ""}`}>{mark} </tspan>}
+            {tag}
+          </text>
+        </g>
+      ) : (
+        mark && (
+          <text className={`mark ${n.status === "dead-end" ? "dead" : ""}`} y={-(label ? box.h / 2 + 5 : 12)}>
+            {mark}
+          </text>
+        )
       )}
     </g>
   );
@@ -319,10 +351,18 @@ function Chain({
   );
 }
 
-function Tooltip({ v }: { v: VNode }) {
-  const text =
+function Tooltip({ v, members }: { v: VNode; members: Map<string, MemberInfo> }) {
+  let text =
     v.kind === "chain"
       ? `${v.nodes.length} linear turns — click to expand`
       : `${v.node.injected || v.node.midTurn ? "mid-turn " : ""}${v.node.role}: ${shortLabel(v.node, 90)}`;
+  // A fork's first turn names its chat — here in full, and also when a user
+  // label took the tag's place.
+  const m = v.kind === "node" && v.node.branchKind === "fork" ? members.get(v.node.sourceSessionId ?? "") : undefined;
+  if (m) {
+    const parent = m.parentId ? members.get(m.parentId)?.title : undefined;
+    const from = parent ? ` · ${m.parentEvidence === "inferred" ? "probably forked from" : "forked from"} “${parent}”` : "";
+    text = `fork “${m.title}”${from} — ${text}`;
+  }
   return <div className="tree-tooltip">{text}</div>;
 }

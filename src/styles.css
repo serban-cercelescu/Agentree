@@ -110,11 +110,24 @@ button.ghost:hover, a.ghost:hover { border-color: var(--line); color: var(--fg);
   color: var(--muted); overflow: hidden; text-overflow: ellipsis; max-width: 46ch;
 }
 .tree-card {
-  width: 100%; display: flex; flex-direction: column; gap: 2px; text-align: left;
+  display: flex; flex-direction: column; gap: 2px;
   background: var(--panel); border: 1px solid var(--line);
   border-radius: var(--radius); padding: 10px 13px; margin: 4px 0;
 }
 .tree-card:hover { border-color: var(--accent); }
+/* The card's main target; the fork names under it are buttons of their own. */
+.tree-main {
+  display: flex; flex-direction: column; gap: 2px; width: 100%; min-width: 0;
+  background: none; border: 0; padding: 0; text-align: left;
+}
+.fork-line { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 2px; min-width: 0; }
+.fork-glyph { margin-right: 4px; color: var(--accent); }
+.fork-name {
+  background: none; border: 0; padding: 0; color: var(--muted);
+  max-width: 38ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom;
+}
+.fork-name:hover { color: var(--fg); text-decoration: underline; }
+.fork-name.match { color: var(--fg); font-weight: 600; background: color-mix(in srgb, var(--accent) 18%, transparent); border-radius: 4px; padding: 0 3px; }
 .tree-title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .branch-badge { color: var(--accent); margin-left: 8px; font-weight: 600; }
 .id-short { color: var(--muted); }
@@ -187,10 +200,21 @@ button.ghost:hover, a.ghost:hover { border-color: var(--line); color: var(--fg);
   pointer-events: none; letter-spacing: -0.01em;
 }
 .halo-box { fill: none; stroke: var(--accent); stroke-width: 2; }
+/* A fork's name over its first turn. Opaque, so an edge or a chain line
+   passing behind it doesn't strike the text through. */
+.fork-tag rect { fill: var(--panel); stroke: var(--muted); stroke-width: 1; stroke-dasharray: 3 2; }
+.fork-tag text {
+  font-size: 10px; fill: var(--fg); text-anchor: middle; pointer-events: none;
+  font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+}
+.vnode.on-path .fork-tag rect { stroke: var(--accent); }
+.vnode.dead .fork-tag { opacity: 0.45; }
+.fork-tag .mark { font-size: 10px; }
 
 .vchain { cursor: pointer; }
-.chain-line { stroke: var(--line); stroke-width: 1.5; stroke-dasharray: 3 4; }
-.vchain.on-path .chain-line { stroke: var(--accent); stroke-width: 2.5; stroke-dasharray: 4 4; }
+/* Dotted: turns hidden inside a collapsed chain. (Long dashes mean a new session.) */
+.chain-line { stroke: var(--line); stroke-width: 2; stroke-dasharray: 0.1 5; stroke-linecap: round; }
+.vchain.on-path .chain-line { stroke: var(--accent); stroke-width: 3; stroke-dasharray: 0.1 6; stroke-linecap: round; }
 .chain-pill { fill: var(--panel); stroke: var(--line); }
 .vchain:hover .chain-pill { stroke: var(--accent); }
 .chain-count {
@@ -401,6 +425,18 @@ button.ghost:hover, a.ghost:hover { border-color: var(--line); color: var(--fg);
 .provider-chip.claude { color: #c96442; border-color: #c9644255; background: #c9644214; }
 .provider-chip.codex { color: #10a37f; border-color: #10a37f55; background: #10a37f14; }
 .provider-chip.copilot { color: #6c9bd1; border-color: #6c9bd155; background: #6c9bd114; }
+/* A chip that filters the list by agent; "on" fills it in. */
+.provider-chip.toggle { cursor: pointer; font-family: inherit; line-height: inherit; }
+.provider-chip.toggle:hover { border-color: currentColor; }
+.provider-chip.toggle.on { color: #fff; border-color: transparent; }
+.provider-chip.claude.on { background: #c96442; }
+.provider-chip.codex.on { background: #10a37f; }
+.provider-chip.copilot.on { background: #6c9bd1; }
+.dir-clear {
+  background: none; border: 1px solid var(--line); border-radius: 999px;
+  padding: 1px 8px; color: var(--muted); cursor: pointer; font: inherit;
+}
+.dir-clear:hover { border-color: var(--accent); color: var(--fg); }
 
 /* Whole-prefix reading view inside the node panel. */
 .prefix-toggle { margin-bottom: 8px; }
@@ -426,3 +462,67 @@ button.ghost:hover, a.ghost:hover { border-color: var(--line); color: var(--fg);
   border-radius: 999px; background: none; color: var(--muted); cursor: pointer;
 }
 .update-actions button.ghost:hover { border-color: var(--accent); color: var(--fg); }
+
+/* An edge that crosses into another session — a fork, or a Codex prompt
+   edit. Dashed so a family tree reads as "these are separate conversations". */
+.edge.cross { stroke-dasharray: 9 5; }
+.lg-cross {
+  width: 18px; height: 0; display: inline-block;
+  border-top: 2px dashed var(--muted);
+}
+
+/* Welcome-screen provider status rows: the "fail loudly" surface. */
+.health { display: flex; flex-direction: column; gap: 4px; margin: 0 0 10px; }
+.health-row { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.health-row.warn { color: #b8862f; }
+.health-row.error { color: #d0453a; }
+.health-row details { display: inline; }
+.health-row summary { cursor: pointer; display: inline; }
+
+/* The session the selected turn belongs to, inside a family tree. */
+.member-block .member-title { font-weight: 600; margin: 2px 0 6px; }
+/* Shared history: which of the sessions holding it to open or resume. */
+.member-block .member-pick {
+  display: block; width: 100%; margin: 2px 0 6px; padding: 3px 6px; font-weight: 600;
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+}
+.fork-badge {
+  display: inline-block; padding: 0 6px; margin-left: 6px; border-radius: 999px;
+  font-size: 10.5px; border: 1px dashed var(--muted); color: var(--muted);
+}
+
+/* The insets above clear macOS's inset traffic lights. Every other platform
+   (and the VS Code webview) has a native frame, so give the space back. */
+:root:not([data-platform="darwin"]) .rail-brand { padding: 14px; }
+:root:not([data-platform="darwin"]) .session-pane-head { padding: 12px 0; }
+:root:not([data-platform="darwin"]) .toolbar { padding: 8px 12px; }
+
+/* ---------------------------------------------------------------- settings */
+
+.rail-brand .gear { margin-left: auto; font-size: 16px; padding: 2px 8px; align-self: flex-start; -webkit-app-region: no-drag; }
+.settings-backdrop {
+  position: fixed; inset: 0; z-index: 20; display: flex; align-items: flex-start; justify-content: center;
+  background: color-mix(in srgb, var(--bg) 60%, transparent); padding: 6vh 16px;
+}
+.settings {
+  width: min(560px, 100%); max-height: 88vh; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+  box-shadow: 0 10px 40px #0004; padding: 6px 20px 14px;
+}
+.settings-head { display: flex; align-items: center; justify-content: space-between; }
+.settings-head h2 { font-size: 16px; margin: 12px 0; }
+.settings section { border-top: 1px solid var(--line); padding: 10px 0; }
+.settings h3 { font-size: 13px; margin: 0 0 8px; }
+.settings p { margin: 0 0 8px; }
+.settings-row { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: baseline; margin-bottom: 8px; }
+.settings-row > span { width: 100%; }
+.settings-check { display: block; margin: 4px 0; }
+.settings-path { display: flex; flex-direction: column; gap: 3px; margin: 8px 0; }
+.settings-path input {
+  background: var(--panel-2); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 5px 9px; font-family: var(--mono); font-size: 12px;
+}
+.settings-path input:focus { outline: none; border-color: var(--accent); }
+.settings-path input:disabled { opacity: 0.6; }
+.settings-file code { font-family: var(--mono); word-break: break-all; }
+.sort-toggle { white-space: nowrap; padding: 2px 8px; }

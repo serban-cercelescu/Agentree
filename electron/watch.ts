@@ -1,13 +1,8 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 
-import { locate } from "./transcripts.ts";
-import { SESSIONS as CODEX_SESSIONS, locateCodex } from "./providers/codex.ts";
-import { STATE as COPILOT_STATE, locateCopilot } from "./providers/copilot.ts";
-import type { SessionId } from "../shared/types.ts";
-
-const PROJECTS = path.join(os.homedir(), ".claude", "projects");
+/** Files any provider reads: .jsonl, Codex's compressed pages, Copilot's yaml. */
+const TRANSCRIPT = /\.(jsonl|jsonl\.zst|yaml)$/;
 
 /**
  * Debounce window for disk events.
@@ -32,6 +27,17 @@ const QUIET_MS = 250;
  */
 const POLL_MS = 1000;
 
+/**
+ * Something on disk a view depends on. Resolved by the providers (in the
+ * backend worker — finding a session's files can mean a scan), watched here
+ * on the host, which only stats.
+ *
+ * - `dir`: watched recursively for transcript files, and stat-polled if `poll`.
+ * - `file`: a single file outside those trees (Codex's thread-name index),
+ *   stat-polled only.
+ */
+export type WatchTarget = { kind: "dir"; path: string; poll: boolean } | { kind: "file"; path: string };
+
 export interface Watcher {
   close(): void;
 }
@@ -54,7 +60,7 @@ function treeSignature(dir: string, depth = 0): string {
     const p = path.join(dir, e.name);
     if (e.isDirectory()) {
       if (depth < 3) out += treeSignature(p, depth + 1);
-    } else if (/\.(jsonl|yaml)$/.test(e.name)) {
+    } else if (TRANSCRIPT.test(e.name)) {
       try {
         const s = fs.statSync(p);
         out += `${p}:${s.size}:${s.mtimeMs}\n`;
@@ -66,43 +72,24 @@ function treeSignature(dir: string, depth = 0): string {
   return out;
 }
 
-/**
- * Watch a session's transcript, or — with `sessionId: null` — the whole
- * projects tree, and call `onChange` once per burst of writes.
- *
- * Watching a single session still means watching its *directory* rather than
- * the file: editors and the CLI both replace files, and a watch on an inode
- * goes deaf the moment the file is rewritten.
- */
-export function watchTranscripts(
-  sessionId: SessionId | null,
-  onChange: () => void,
-): Watcher {
-  // Targets: (dir, only-this-file filter, poll). For a session, watch the
-  // directory owning its transcript in whichever harness has it. For the
-  // welcome screen, watch all three roots. Codex/Copilot roots are ALSO
-  // stat-polled — see POLL_MS for why fs.watch alone goes deaf there.
-  const targets: { dir: string; only: string | null; poll: boolean }[] = [];
-
-  if (sessionId) {
-    const loc = locate(sessionId);
-    if (loc) {
-      targets.push({ dir: path.dirname(loc.file), only: path.basename(loc.file), poll: false });
-    } else {
-      const codex = locateCodex(sessionId);
-      // A stitched tree can grow through ANY family member (or a brand-new
-      // fork), so a session watch covers the provider's whole root — the
-      // parse cache keeps the rescan cheap.
-      if (codex) targets.push({ dir: CODEX_SESSIONS, only: null, poll: true });
-      else if (locateCopilot(sessionId)) targets.push({ dir: COPILOT_STATE, only: null, poll: true });
-      else return { close() {} };
-    }
-  } else {
-    targets.push({ dir: PROJECTS, only: null, poll: false });
-    targets.push({ dir: CODEX_SESSIONS, only: null, poll: true });
-    targets.push({ dir: COPILOT_STATE, only: null, poll: true });
+function fileSignature(file: string): string {
+  try {
+    const s = fs.statSync(file);
+    return `${s.size}:${s.mtimeMs}`;
+  } catch {
+    return "missing";
   }
+}
 
+/**
+ * Watch `targets` and call `onChange` once per burst of writes.
+ *
+ * Directories, never single transcripts: editors and the CLI both replace
+ * files, a watch on an inode goes deaf the moment the file is rewritten — and
+ * a tree is a FAMILY of sessions that can grow through any member, or through
+ * a brand-new fork file next to them.
+ */
+export function watchTranscripts(targets: WatchTarget[], onChange: () => void): Watcher {
   let timer: NodeJS.Timeout | null = null;
   const fire = () => {
     if (timer) clearTimeout(timer);
@@ -113,45 +100,104 @@ export function watchTranscripts(
   };
 
   const polls: NodeJS.Timeout[] = [];
-  for (const { dir, poll } of targets) {
-    if (!poll || !fs.existsSync(dir)) continue;
-    let sig = treeSignature(dir);
+  const poll = (sign: () => string) => {
+    let sig = sign();
     polls.push(
       setInterval(() => {
-        const next = treeSignature(dir);
+        const next = sign();
         if (next !== sig) {
           sig = next;
           fire();
         }
       }, POLL_MS),
     );
-  }
+  };
 
   const watchers: fs.FSWatcher[] = [];
-  for (const { dir, only } of targets) {
+  const attach = (t: Extract<WatchTarget, { kind: "dir" }>) => {
+    if (t.poll) poll(() => treeSignature(t.path));
     try {
-      const w = fs.watch(dir, { recursive: !only }, (_event, filename) => {
-        if (only && filename && path.basename(filename) !== only) return;
-        // Claude/Codex append .jsonl; Copilot appends events.jsonl inside a
-        // session dir — both end in .jsonl, and yaml changes ride along on the
-        // same debounce as their neighbouring events write.
-        if (!only && filename && !/\.(jsonl|yaml)$/.test(filename)) return;
+      // The long, real path: on Windows a recursive watch on an 8.3 short
+      // path (C:\Users\JOHNSM~1\…, as os.tmpdir() can return) gets event
+      // names in long form, and libuv aborts the whole process on them.
+      const w = fs.watch(fs.realpathSync.native(t.path), { recursive: true }, (_event, filename) => {
+        // Claude/Codex append .jsonl; Codex rotates pages to .jsonl.zst;
+        // Copilot appends events.jsonl inside a session dir, and yaml changes
+        // ride along on the same debounce as their neighbouring events write.
+        if (filename && !TRANSCRIPT.test(filename)) return;
         fire();
       });
       // A watcher on a directory the user may delete shouldn't take the app down.
       w.on("error", () => w.close());
       watchers.push(w);
     } catch {
-      // Missing directory (harness not installed) — the others still watch.
+      // Gone again between the check and the watch; the poll (if any) still runs.
+    }
+  };
+
+  // A root that doesn't exist yet (the harness isn't installed, or a new
+  // home was just configured) is waited for: a stat per second, and once it
+  // appears it gets the normal watch, plus one change to read what's there.
+  for (const t of targets) {
+    if (t.kind === "file") {
+      poll(() => fileSignature(t.path));
+    } else if (fs.existsSync(t.path)) {
+      attach(t);
+    } else {
+      const wait = setInterval(() => {
+        if (!fs.existsSync(t.path)) return;
+        clearInterval(wait);
+        attach(t);
+        fire();
+      }, POLL_MS);
+      polls.push(wait);
     }
   }
-  if (watchers.length === 0 && polls.length === 0) return { close() {} };
 
   return {
     close() {
       if (timer) clearTimeout(timer);
       for (const w of watchers) w.close();
       for (const p of polls) clearInterval(p);
+    },
+  };
+}
+
+/** Waits between attempts to resolve watch targets that failed (worker restarting, say). */
+const RETRY_MS = [1000, 2000, 5000, 10000, 30000];
+
+/**
+ * A watcher whose targets come from the backend worker. Closing it before
+ * they arrive is fine: nothing is ever started.
+ *
+ * Two gaps it closes. Resolution can fail (the worker crashed and is being
+ * restarted), and the UI has no refresh button to fall back on — so it
+ * retries, backing off, until it gets targets or is closed. And the view
+ * read the store BEFORE the watch existed, so anything written in between
+ * would be missed: once installed, it fires `onChange` once to reconcile.
+ */
+export function watchLater(resolve: () => Promise<WatchTarget[]>, onChange: () => void): Watcher {
+  let inner: Watcher | null = null;
+  let closed = false;
+  let retry: NodeJS.Timeout | null = null;
+  const attempt = (n: number) => {
+    resolve().then(
+      (t) => {
+        if (closed) return;
+        inner = watchTranscripts(t, onChange);
+        onChange();
+      },
+      () => {
+        if (!closed) retry = setTimeout(() => attempt(n + 1), RETRY_MS[Math.min(n, RETRY_MS.length - 1)]);
+      },
+    );
+  };
+  attempt(0);
+  return {
+    close() {
+      closed = true;
+      if (retry) clearTimeout(retry);
+      inner?.close();
     },
   };
 }

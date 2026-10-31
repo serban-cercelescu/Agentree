@@ -1,12 +1,13 @@
 import { app, BrowserWindow, ipcMain, nativeImage, nativeTheme, shell } from "electron";
 import path from "node:path";
 
-import { listAllSessions, loadAnySession, forkAnyAt } from "./registry.ts";
+import { startBackend } from "./backend-client.ts";
+import { nativeLink } from "./native.ts";
+import { openTerminal } from "./terminal.ts";
 import { checkForUpdate } from "./update.ts";
-import { writeMeta } from "./meta.ts";
-import { watchTranscripts, type Watcher } from "./watch.ts";
+import { watchLater, type Watcher } from "./watch.ts";
 import { CH } from "./ipc.ts";
-import type { NodeMeta } from "../shared/types.ts";
+import type { ActionResult, ForkPoint, NodeMeta, SessionRef, SettingsPatch } from "../shared/types.ts";
 
 /**
  * App root. Using Electron's own resolver rather than __dirname/import.meta
@@ -20,6 +21,12 @@ const DEV_URL = process.env.AGENTVIEW_DEV_URL;
 
 const iconPath = (name: string) => path.join(ROOT(), "assets", name);
 
+/**
+ * Transcript scanning, parsing and forking run in a worker thread: a cold
+ * scan takes seconds, and on this thread it would freeze the window.
+ */
+const backend = startBackend(path.join(ROOT(), "dist-electron", "worker.cjs"));
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1440,
@@ -29,8 +36,12 @@ function createWindow() {
     title: "Agentree",
     // Window icon matters on Windows/Linux; macOS uses the dock icon below.
     icon: nativeImage.createFromPath(iconPath("logo-512.png")),
-    // Chrome-less title bar with the traffic lights inset over our toolbar.
-    titleBarStyle: "hiddenInset",
+    // macOS: chrome-less title bar with the traffic lights inset over our
+    // toolbar. Elsewhere "hiddenInset" means NO window controls at all, so
+    // Windows/Linux keep the native frame (the renderer drops the insets).
+    ...(process.platform === "darwin"
+      ? { titleBarStyle: "hiddenInset" as const }
+      : { autoHideMenuBar: true }),
     backgroundColor: nativeTheme.shouldUseDarkColors ? "#12100e" : "#faf8f5",
     webPreferences: {
       preload: path.join(ROOT(), "dist-electron", "preload.cjs"),
@@ -61,12 +72,16 @@ function createWindow() {
     return { action: "deny" };
   });
 
-  // Update check, once the renderer is listening. Fire-and-forget: the check
-  // is silent on every failure, so nothing here can delay or break startup.
+  // Update check, once the renderer is listening, unless the settings turned
+  // it off. Fire-and-forget: the check is silent on every failure, so nothing
+  // here can delay or break startup.
   win.webContents.once("did-finish-load", () => {
-    void checkForUpdate(ROOT()).then((info) => {
-      if (info && !win.isDestroyed()) win.webContents.send(CH.updateAvailable, info);
-    });
+    void backend
+      .getSettings()
+      .then((s) => (s.settings.updateCheck ? checkForUpdate(ROOT()) : null), () => checkForUpdate(ROOT()))
+      .then((info) => {
+        if (info && !win.isDestroyed()) win.webContents.send(CH.updateAvailable, info);
+      });
   });
 
   return win;
@@ -74,17 +89,44 @@ function createWindow() {
 
 // ------------------------------------------------------------------ handlers
 
-ipcMain.handle(CH.listSessions, () => listAllSessions());
+ipcMain.handle(CH.listSessions, () => backend.listSessions());
 
-ipcMain.handle(CH.getSession, (_e, id: string) => loadAnySession(id));
+ipcMain.handle(CH.getSession, (_e, id: string) => backend.getSession(id));
 
-ipcMain.handle(CH.patchNode, (_e, sessionId: string, nodeId: string, patch: NodeMeta) => {
-  writeMeta(sessionId, nodeId, patch);
+ipcMain.handle(CH.patchNode, (_e, sessionId: string, nodeId: string, patch: NodeMeta) =>
+  backend.patchNode(sessionId, nodeId, patch),
+);
+
+ipcMain.handle(CH.forkAt, (_e, sessionId: string, point: ForkPoint) => backend.forkAt(sessionId, point));
+
+ipcMain.handle(CH.providerHealth, () => backend.providerHealth());
+
+ipcMain.handle(CH.getSettings, () => backend.getSettings());
+ipcMain.handle(CH.setSettings, (_e, patch: SettingsPatch) => backend.setSettings(patch));
+
+// Hand a session to VS Code: the OS routes the vscode:// deep link to the
+// harness's extension, exactly as a click on the link would.
+ipcMain.handle(CH.openNative, async (_e, ref: SessionRef): Promise<ActionResult> => {
+  const link = nativeLink(ref);
+  if (!link) return { ok: false, error: "This harness has no VS Code extension to open sessions in." };
+  try {
+    await shell.openExternal(link);
+    return { ok: true };
+  } catch (err) {
+    return {
+      ok: false,
+      error: `Couldn't hand the session to VS Code (is it installed?): ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
 });
 
-ipcMain.handle(CH.forkAt, (_e, sessionId: string, nodeId: string) =>
-  forkAnyAt(sessionId, nodeId),
-);
+// The worker says what to run — argv plus the environment that points the
+// harness at the store Agentree read it from; this process only opens the window.
+ipcMain.handle(CH.resumeInTerminal, async (_e, ref: SessionRef): Promise<ActionResult> => {
+  const launch = await backend.resumeLaunch(ref.provider, ref.sessionId);
+  if (!launch) return { ok: false, error: "Unknown session." };
+  return openTerminal(launch.argv, ref.cwd, launch.env);
+});
 
 // ---- live transcript watching ----
 //
@@ -100,7 +142,7 @@ ipcMain.handle(CH.watchStart, (e, token: string, sessionId: string | null) => {
   const sender = e.sender;
   watchers.set(
     key,
-    watchTranscripts(sessionId, () => {
+    watchLater(() => backend.watchTargets(sessionId), () => {
       if (!sender.isDestroyed()) sender.send(CH.changed, token);
     }),
   );
@@ -139,3 +181,5 @@ void app.whenReady().then(() => {
 app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
+
+app.on("will-quit", () => backend.dispose());

@@ -1,20 +1,20 @@
 {
   "name": "agentree",
   "displayName": "Agentree",
-  "description": "See your coding-agent conversations as trees. Fork them anywhere. Claude Code, OpenAI Codex CLI, GitHub Copilot CLI.",
-  "version": "0.1.0",
-  "publisher": "serban-cercelescu",
+  "description": "See your Claude Code and Codex conversations, forks included, as trees. Fork at any turn and continue in the agent's own chat panel.",
+  "version": "0.2.0",
+  "publisher": "sadeeptha-b",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/serban-cercelescu/Agentree.git"
+    "url": "https://github.com/Sadeeptha-B/Agentree.git"
   },
-  "homepage": "https://github.com/serban-cercelescu/Agentree",
+  "homepage": "https://github.com/Sadeeptha-B/Agentree",
   "bugs": {
-    "url": "https://github.com/serban-cercelescu/Agentree/issues"
+    "url": "https://github.com/Sadeeptha-B/Agentree/issues"
   },
   "engines": {
-    "vscode": "^1.90.0"
+    "vscode": "^1.101.0"
   },
   "categories": [
     "Visualization",
@@ -24,12 +24,13 @@
   "keywords": [
     "claude code",
     "codex",
-    "copilot cli",
     "conversation tree",
     "fork",
+    "branch",
     "transcript",
     "agent",
-    "session"
+    "session",
+    "copilot cli"
   ],
   "icon": "logo.png",
   "galleryBanner": {

@@ -1,12 +1,80 @@
 import { useMemo, useState } from "react";
 import { useStore } from "../store.ts";
 import { when } from "../format.ts";
+import type { ProviderHealth, ProviderId } from "../../shared/types.ts";
+import { filterSessions, focusFor, ofProvider, railDirs, shownForks, timeOf, type RailDir } from "../list.ts";
+import { Settings } from "./Settings.tsx";
+import { ErrorBanner } from "./ErrorBanner.tsx";
 import logoUrl from "../../assets/logo.png";
 
-/** `/Users/me/Personal/Agentree` → `~/Personal/Agentree`. */
+/** `/Users/me/Personal/Agentree` → `~/Personal/Agentree`; same for `C:\Users\me\…`. */
 function tilde(p: string): string {
-  const m = /^\/(?:Users|home)\/[^/]+(\/.*)?$/.exec(p);
+  const m = /^\/(?:Users|home)\/[^/]+(\/.*)?$/.exec(p) ?? /^[A-Za-z]:\\Users\\[^\\]+(\\.*)?$/i.exec(p);
   return m ? "~" + (m[1] ?? "") : p;
+}
+
+/** Last segment of a POSIX or Windows path. */
+const leaf = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() || p;
+
+/**
+ * One line per harness: what the last scan saw. A format change shows up here
+ * as "files seen, few parsed" or as unknown record types the day it happens,
+ * instead of as a list that is quietly missing conversations.
+ */
+function HealthRows({
+  health,
+  active,
+  onToggle,
+}: {
+  health: ProviderHealth[];
+  active: ProviderId | "";
+  onToggle: (p: ProviderId) => void;
+}) {
+  const rows = health.filter((h) => h.present || h.error);
+  if (rows.length === 0) return null;
+  return (
+    <div className="health muted small">
+      {rows.map((h) => {
+        const unknown = Object.entries(h.unknownRecordTypes);
+        const versions = Object.entries(h.formatVersions)
+          .map(([v, n]) => `${v} ×${n}`)
+          .join(", ");
+        const level = h.error ? "error" : h.warnings.length ? "warn" : "";
+        return (
+          <div
+            key={h.provider}
+            className={`health-row ${level}`}
+            title={versions ? `${h.root}\n${versions}` : h.root}
+          >
+            {/* The chip is the agent filter: one agent's sessions, or all again. */}
+            <button
+              className={`provider-chip ${h.provider} toggle ${active === h.provider ? "on" : ""}`}
+              aria-pressed={active === h.provider}
+              title={active === h.provider ? "Show every agent's conversations" : `Show only ${h.provider} conversations`}
+              onClick={() => onToggle(h.provider)}
+            >
+              {h.provider}
+            </button>
+            <span>
+              {h.filesSeen} files · {h.sessionsParsed} parsed
+              {h.skipped ? ` · ${h.skipped} hidden` : ""}
+              {h.failed ? ` · ${h.failed} failed` : ""} · {h.listed} listed · {h.backend}
+            </span>
+            {unknown.length > 0 && (
+              <details>
+                <summary>· {unknown.length} unknown record types</summary>
+                <code>{unknown.map(([t, n]) => `${t} ×${n}`).join(", ")}</code>
+              </details>
+            )}
+            {h.error && <span>· {h.error}</span>}
+            {h.warnings.map((w) => (
+              <span key={w}>· {w}</span>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 /**
@@ -21,40 +89,23 @@ function tilde(p: string): string {
 const RAIL_DIRS = 10;
 
 export function Welcome() {
-  const { sessions, filter, cwdFilter, loading, update, openSession, set } = useStore();
+  const {
+    sessions, health, filter, cwdFilter, providerFilter, loading, update, openSession, set, settings, settingsOpen,
+    saveSettings, error, settingsError,
+  } = useStore();
+  const sortBy = settings?.settings.sortBy ?? "active";
   const [moreOpen, setMoreOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Directories ranked by their most recent conversation, so the rail reads in
-  // the same order as the list: what you touched last is on top.
-  const dirs = useMemo(() => {
-    const latest = new Map<string, number>();
-    const count = new Map<string, number>();
-    for (const s of sessions) {
-      if (!s.cwd) continue;
-      latest.set(s.cwd, Math.max(latest.get(s.cwd) ?? 0, s.updatedAt));
-      count.set(s.cwd, (count.get(s.cwd) ?? 0) + 1);
-    }
-    return [...latest.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([cwd]) => ({ cwd, n: count.get(cwd) ?? 0 }));
-  }, [sessions]);
-
-  const visible = useMemo(() => {
-    const q = filter.trim().toLowerCase();
-    const list = sessions.filter((s) => {
-      if (cwdFilter && s.cwd !== cwdFilter) return false;
-      if (!q) return true;
-      return (
-        s.title.toLowerCase().includes(q) ||
-        s.cwd.toLowerCase().includes(q) ||
-        s.id.startsWith(q)
-      );
-    });
-    // Newest interaction first. `listSessions` already sorts this way, but the
-    // ordering is the point of this screen, so don't rely on it holding.
-    return [...list].sort((a, b) => b.updatedAt - a.updatedAt);
-  }, [sessions, filter, cwdFilter]);
+  // The rail counts what the agent filter lets through, so its numbers agree
+  // with the list they narrow.
+  const mine = useMemo(() => ofProvider(sessions, providerFilter), [sessions, providerFilter]);
+  const dirs = useMemo(() => railDirs(mine, sortBy), [mine, sortBy]);
+  const visible = useMemo(
+    () => filterSessions(sessions, { query: filter, cwd: cwdFilter, provider: providerFilter, sortBy }),
+    [sessions, filter, cwdFilter, providerFilter, sortBy],
+  );
+  const activeDir = dirs.find((d) => d.key === cwdFilter);
 
   return (
     <div className="welcome">
@@ -65,6 +116,9 @@ export function Welcome() {
             <h1>Agentree</h1>
             <p className="muted small">conversation trees</p>
           </div>
+          <button className="ghost gear" title="Settings" aria-label="Settings" onClick={() => set({ settingsOpen: true })}>
+            ⚙
+          </button>
         </div>
 
         <nav className="dir-list">
@@ -73,7 +127,7 @@ export function Welcome() {
             onClick={() => set({ cwdFilter: "" })}
           >
             <span className="dir-name">All conversations</span>
-            <span className="dir-count">{sessions.length}</span>
+            <span className="dir-count">{mine.length}</span>
           </button>
 
           <div className="rail-label muted small">recent directories</div>
@@ -85,18 +139,18 @@ export function Welcome() {
             // when the menu is shut — hiding the active filter would leave the
             // list narrowed with nothing in the rail saying why.
             const pinned =
-              !moreOpen && cwdFilter && rest.some((d) => d.cwd === cwdFilter)
-                ? rest.filter((d) => d.cwd === cwdFilter)
+              !moreOpen && cwdFilter && rest.some((d) => d.key === cwdFilter)
+                ? rest.filter((d) => d.key === cwdFilter)
                 : [];
 
-            const row = ({ cwd, n }: { cwd: string; n: number }) => (
+            const row = ({ key, path, n }: RailDir) => (
               <button
-                key={cwd}
-                className={`dir-row ${cwdFilter === cwd ? "active" : ""}`}
-                title={tilde(cwd)}
-                onClick={() => set({ cwdFilter: cwd })}
+                key={key}
+                className={`dir-row ${cwdFilter === key ? "active" : ""}`}
+                title={tilde(path)}
+                onClick={() => set({ cwdFilter: key })}
               >
-                <span className="dir-name">{cwd.split("/").pop() || cwd}</span>
+                <span className="dir-name">{leaf(path)}</span>
                 <span className="dir-count">{n}</span>
               </button>
             );
@@ -121,6 +175,15 @@ export function Welcome() {
       </aside>
 
       <main className="session-pane">
+        {/* The list's own failures, and a settings change that wasn't saved
+            (the settings dialog shows that one itself while it is open). */}
+        <ErrorBanner message={error} onDismiss={() => set({ error: null })} />
+        {!settingsOpen && (
+          <ErrorBanner
+            message={settingsError && `Settings not saved: ${settingsError}`}
+            onDismiss={() => set({ settingsError: null })}
+          />
+        )}
         {update && (
           <div className="update-banner">
             <span>
@@ -151,67 +214,141 @@ export function Welcome() {
         <div className="session-pane-head">
           <input
             className="search"
-            placeholder="Filter by title, directory, or id…"
+            placeholder="Filter by title (forks too), directory, or id…"
             value={filter}
             onChange={(e) => set({ filter: e.target.value })}
           />
           <span className="muted small">
             {loading && sessions.length === 0 ? "scanning…" : `${visible.length} conversations`}
           </span>
+          {/* Which time orders the list is a setting; say which, here, and let
+              one click switch it — a remembered "last file change" otherwise
+              looks like the list ignoring activity. */}
+          <button
+            className="ghost sort-toggle small"
+            disabled={!settings}
+            title={
+              sortBy === "touched"
+                ? "Sorted by the last write to any of the session's files, bookkeeping included. Click to sort by the last message or tool activity."
+                : "Sorted by the last message or tool activity. Click to sort by the last change to the session's files."
+            }
+            onClick={() => void saveSettings({ sortBy: sortBy === "touched" ? "active" : "touched" })}
+          >
+            by {sortBy === "touched" ? "last file change" : "last activity"} ⇅
+          </button>
         </div>
 
-        {cwdFilter && (
+        <HealthRows
+          health={health}
+          active={providerFilter}
+          onToggle={(p) => set({ providerFilter: providerFilter === p ? "" : p })}
+        />
+
+        {(cwdFilter || providerFilter) && (
           <div className="active-dir muted small">
-            <code>{tilde(cwdFilter)}</code>
-            <button className="ghost" onClick={() => set({ cwdFilter: "" })}>
+            {providerFilter && (
+              <button
+                className={`provider-chip ${providerFilter} toggle on`}
+                title="Show every agent's conversations"
+                onClick={() => set({ providerFilter: "" })}
+              >
+                {providerFilter} ✕
+              </button>
+            )}
+            {cwdFilter && (
+              <button className="dir-clear" title="Show every directory" onClick={() => set({ cwdFilter: "" })}>
+                <code>{tilde(activeDir?.path ?? cwdFilter)}</code> ✕
+              </button>
+            )}
+            <button className="ghost" onClick={() => set({ cwdFilter: "", providerFilter: "" })}>
               show all
             </button>
           </div>
         )}
 
         <ul className="tree-list">
-          {visible.map((s) => (
-            <li key={s.id}>
-              <button className="tree-card" onClick={() => void openSession(s.id)}>
-                <span className="tree-title">
-                  <span className={`provider-chip ${s.provider}`}>{s.provider}</span>
-                  {s.title}
-                </span>
-                <span className="muted small tree-sub">
-                  {!cwdFilter && (
-                    <>
-                      <code className="cwd" title={s.cwd}>
-                        {s.cwd ? tilde(s.cwd) : "(unknown directory)"}
-                      </code>
-                      {" · "}
-                    </>
-                  )}
-                  {s.nodeCount} turns
-                  {s.branchPoints > 0 && (
-                    <span className="branch-badge" title="branch points">
-                      ⑂ {s.branchPoints}
+          {visible.map((s) => {
+            const forks = shownForks(s, filter);
+            return (
+              <li key={`${s.provider}:${s.id}`} className="tree-card">
+                <button className="tree-main" onClick={() => void openSession(s.id, { focus: focusFor(s, filter) })}>
+                  <span className="tree-title">
+                    <span className={`provider-chip ${s.provider}`}>{s.provider}</span>
+                    {s.title}
+                    {s.archived && <span className="fork-badge">archived</span>}
+                  </span>
+                  <span className="muted small tree-sub">
+                    {!cwdFilter && (
+                      <>
+                        <code className="cwd" title={s.cwd}>
+                          {s.cwd ? tilde(s.cwd) : "(unknown directory)"}
+                        </code>
+                        {" · "}
+                      </>
+                    )}
+                    {s.nodeCount} turns
+                    {s.branchPoints > 0 && (
+                      <span className="branch-badge" title="branch points">
+                        ⑂ {s.branchPoints}
+                      </span>
+                    )}
+                    {(s.members ?? 1) > 1 && (
+                      <span className="fork-badge" title="sessions stitched into this tree (forks)">
+                        {s.members} sessions
+                      </span>
+                    )}
+                    {" · "}
+                    <span
+                      title={
+                        sortBy === "touched"
+                          ? `Last file change. Last message or tool activity: ${new Date(s.activeAt).toLocaleString()}`
+                          : `Last message or tool activity. Last file change: ${new Date(s.touchedAt).toLocaleString()}`
+                      }
+                    >
+                      {when(timeOf(s, sortBy))}
                     </span>
-                  )}
-                  {" · "}
-                  {when(s.updatedAt)}
-                  {" · "}
-                  <code className="id-short">{s.id.slice(0, 8)}</code>
-                </span>
-              </button>
-            </li>
-          ))}
+                    {" · "}
+                    <code className="id-short">{s.id.slice(0, 8)}</code>
+                  </span>
+                </button>
+                {/* The family's other chats by name: a fork's title is often the
+                    more descriptive one, and each opens the tree on that fork. */}
+                {forks.shown.length > 0 && (
+                  <div className="fork-line muted small">
+                    <span className="fork-glyph">⑂</span>
+                    {forks.shown.map((f, i) => (
+                      <span key={f.id}>
+                        {i > 0 && " · "}
+                        <button
+                          className={`fork-name ${forks.matched.has(f.id) ? "match" : ""}`}
+                          title={`Open the tree on this fork · ${f.id.slice(0, 8)} · ${when(f.activeAt)}`}
+                          onClick={() => void openSession(s.id, { focus: f.id })}
+                        >
+                          {f.title}
+                        </button>
+                      </span>
+                    ))}
+                    {forks.more > 0 && <span className="fork-more"> · +{forks.more}</span>}
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
 
         {!loading && visible.length === 0 && (
           <p className="muted empty">
             {sessions.length === 0
-              ? "No agent sessions found (~/.claude/projects, ~/.codex/sessions, ~/.copilot/session-state)."
+              ? "No agent sessions found in ~/.claude/projects, ~/.codex/sessions or ~/.copilot/session-state."
               : filter
                 ? "Nothing matches that filter."
-                : "No conversations in this directory yet."}
+                : providerFilter && !cwdFilter
+                  ? `No ${providerFilter} conversations.`
+                  : "No conversations in this directory yet."}
           </p>
         )}
       </main>
+      {settingsOpen && <Settings />}
     </div>
   );
 }

@@ -1,11 +1,10 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useStore } from "../store.ts";
 import { api } from "../api.ts";
-import type { ForkResult } from "../../shared/types.ts";
-import { contextAt, costOf, inferWindow, pathToRoot } from "../../shared/render.ts";
+import type { ActionResult, ForkResult, ProviderId, SessionRef, SettingsPaths, SettingsState } from "../../shared/types.ts";
+import { actionTarget, contextAt, costOf, forkPointOf, inferWindow, pathToRoot } from "../../shared/render.ts";
 import { Markdown } from "../markdown.tsx";
 import { pct, tokens, when } from "../format.ts";
-import { useMemo } from "react";
 
 function Copy({ value, label }: { value: string; label: string }) {
   const [done, setDone] = useState(false);
@@ -40,10 +39,90 @@ function toolSummary(tools: string[]): string {
     .join(" · ");
 }
 
+/** The harnesses with a VS Code extension Agentree can hand a session to. */
+const NATIVE: Partial<Record<ProviderId, string>> = { claude: "Claude Code", codex: "Codex" };
+
+/**
+ * "open in Claude Code / Codex" and "resume in terminal" for one session.
+ * Inside VS Code they use the harness's own chat panel and an integrated
+ * terminal. The desktop app hands the session to VS Code through the
+ * extensions' deep links and opens an OS terminal window.
+ */
+function NativeButtons({ ref_, onResult }: { ref_: SessionRef; onResult: (r: ActionResult) => void }) {
+  const native = NATIVE[ref_.provider];
+  const run = async (fn: () => Promise<ActionResult>) => {
+    try {
+      onResult(await fn());
+    } catch (e) {
+      onResult({ ok: false, error: String(e) });
+    }
+  };
+  return (
+    <>
+      {native && (
+        <button
+          className="copy"
+          title={api.host === "vscode" ? undefined : "Opens the session in VS Code's chat panel"}
+          onClick={() => void run(() => api.openNative(ref_))}
+        >
+          open in {native}
+          {api.host === "vscode" ? "" : " (VS Code)"}
+        </button>
+      )}
+      <button className="copy" onClick={() => void run(() => api.resumeInTerminal(ref_))}>
+        resume in terminal
+      </button>
+    </>
+  );
+}
+
+/** The path setting that relocates each harness's store (electron/paths.ts, HOME_SETTING). */
+const HOME: Record<ProviderId, { key: keyof SettingsPaths; env: string }> = {
+  claude: { key: "claudeConfigDir", env: "CLAUDE_CONFIG_DIR" },
+  codex: { key: "codexHome", env: "CODEX_HOME" },
+  copilot: { key: "copilotHome", env: "COPILOT_HOME" },
+};
+
+/**
+ * Terminal resume and the copied command carry the store Agentree reads; a
+ * chat-panel hand-off can't — the receiving extension reads its own
+ * configuration. Say so when they may differ: the store comes from a saved
+ * setting, or (desktop) from a variable VS Code may not have.
+ */
+function nativeCaveat(provider: ProviderId, state: SettingsState | null): string | null {
+  const native = NATIVE[provider];
+  if (!native || !state) return null;
+  const { key, env } = HOME[provider];
+  const fromEnv = !!state.env[key];
+  if (!(fromEnv ? api.host !== "vscode" : state.settings.paths[key])) return null;
+  return `Agentree reads ${native} history from a location you set; “open in ${native}” finds this session only if the ${native} extension uses the same one (${env}).`;
+}
+
+/** Open / resume / copy for one session. */
+function SessionActions({ ref_, resumeCmd }: { ref_: SessionRef; resumeCmd: string }) {
+  const [status, setStatus] = useState<ActionResult | null>(null);
+  const caveat = nativeCaveat(ref_.provider, useStore((s) => s.settings));
+  return (
+    <>
+      <div className="copy-row">
+        <NativeButtons ref_={ref_} onResult={setStatus} />
+        <Copy value={resumeCmd} label="copy resume command" />
+        <Copy value={ref_.sessionId} label="copy id" />
+      </div>
+      {status && !status.ok && <p className="error-text small hint">{status.error}</p>}
+      {caveat && <p className="muted small hint">{caveat}</p>}
+    </>
+  );
+}
+
 export function NodePanel() {
-  const { session, nodes, selected, patch, setStatus } = useStore();
+  const { session, nodes, selected, focus, patch, setStatus, annotationError, settings, set } = useStore();
+  // A fresh fork opens in the harness's chat panel: by default only in VS
+  // Code, where that panel is right there; the desktop app shows the buttons.
+  const openForks = settings?.settings.openForkInChat ?? api.host === "vscode";
   const [editingLabel, setEditingLabel] = useState(false);
   const [fork, setFork] = useState<ForkResult | null>(null);
+  const [opened, setOpened] = useState<ActionResult | null>(null);
   const [forking, setForking] = useState(false);
 
   // A fork belongs to the turn it was taken at; keep showing it while that turn
@@ -66,35 +145,98 @@ export function NodePanel() {
   const ctx = node ? contextAt(node.id, nodes) : null;
   const depth = node ? pathToRoot(node.id, nodes).length : 0;
 
-  // Built by the provider: each harness spells resume differently
-  // (`claude --resume`, `codex resume`, `copilot --resume=`).
-  const resumeCmd = meta.resumeCommand;
+  // A family tree mixes sessions: open/resume act on the focused member where
+  // the selected turn is in its history, else on the session the turn
+  // belongs to — never just the family root.
+  const members = session.members ?? [];
+  const { member, ref: ref_ } = actionTarget(session, node, focus);
+  const parentTitle = member.parentId ? members.find((m) => m.id === member.parentId)?.title : null;
+  // Shared history is in several sessions at once; let the user say which.
+  const holders = members.filter((m) => node?.heldBy?.includes(m.id));
+
+  const doFork = async () => {
+    if (!node) return;
+    setForking(true);
+    setForkFor(node.id);
+    setOpened(null);
+    try {
+      // Where the node ends as drawn, so a regrouped node is not read as another range.
+      const res = await api.forkAt(meta.id, forkPointOf(node));
+      setFork(res);
+      if (res.ok && res.open && openForks && NATIVE[res.open.provider]) {
+        setOpened(await api.openNative(res.open));
+      }
+    } catch (e) {
+      setFork({ ok: false, error: String(e) });
+    } finally {
+      setForking(false);
+    }
+  };
 
   return (
     <aside className="panel">
       <section className="panel-block session-block">
         <h3>
-          Session <span className={`provider-chip ${meta.provider}`}>{meta.provider}</span>
+          Conversation <span className={`provider-chip ${meta.provider}`}>{meta.provider}</span>
+          {members.length > 1 && <span className="muted small">{members.length} sessions</span>}
         </h3>
-        <div className="kv">
-          <span className="muted small">id</span>
-          <code className="id">{meta.id}</code>
-        </div>
         <div className="kv">
           <span className="muted small">cwd</span>
           <code className="path" title={meta.cwd}>
             {meta.cwd || "—"}
           </code>
         </div>
+      </section>
 
-        <div className="copy-row">
-          <Copy value={meta.id} label="copy id" />
-          <Copy value={resumeCmd} label="copy resume command (at tip)" />
+      <section className="panel-block member-block">
+        <h3>
+          Session
+          {member.parentId && <span className="fork-badge">fork</span>}
+          {member.archived && <span className="fork-badge">archived</span>}
+          {member.entrypoint && <span className="muted small"> · {member.entrypoint}</span>}
+        </h3>
+        {holders.length > 1 ? (
+          <select
+            className="member-pick"
+            title="This turn is in several sessions' history. Open and resume act on the one chosen here."
+            value={member.id}
+            onChange={(e) => set({ focus: e.target.value })}
+          >
+            {holders.map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.title} · {m.id.slice(0, 8)}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <div className="member-title">{member.title}</div>
+        )}
+        {parentTitle && (
+          <p
+            className="muted small hint"
+            title={
+              member.parentEvidence === "inferred"
+                ? "Neither session records which was copied from which; Agentree inferred it from shared history and which file was created first."
+                : undefined
+            }
+          >
+            {member.parentEvidence === "inferred" ? "probably forked from" : "forked from"} “{parentTitle}”
+          </p>
+        )}
+        <div className="kv">
+          <span className="muted small">id</span>
+          <code className="id">{member.id}</code>
         </div>
+        {(member.files?.length ?? 0) > 1 && (
+          <p className="muted small hint" title={member.files!.join("\n")}>
+            Stored in {member.files!.length} project folders (the repo moved); read as one session.
+          </p>
+        )}
+        <SessionActions ref_={ref_} resumeCmd={member.resumeCommand} />
         <p className="muted small hint">
-          Resumes at the session's last turn. Sessions are per-directory; the command includes
-          the <code>cd</code> for that. To branch from an earlier turn, select it and use
-          “⑂ fork after this turn”.
+          Opens or resumes this session where the agent itself would: at the end of its current
+          path, which may not be the branch you selected. To continue from the selected turn, or
+          from an older branch, use “⑂ fork after this turn”.
         </p>
       </section>
 
@@ -132,7 +274,7 @@ export function NodePanel() {
             )}
 
             <div className="panel-actions">
-              {!node.injected && <Copy value={node.id} label="copy node uuid" />}
+              {!node.injected && <Copy value={node.id} label="copy node id" />}
               <button
                 className="ghost"
                 title="Dims this turn and everything under it"
@@ -154,56 +296,41 @@ export function NodePanel() {
                 label
               </button>
             </div>
-
-            {node.injected && (
-              <p className="muted small hint">
-                Sent mid-turn; Claude Code wrote no record for it, so it can't be resumed at.
-              </p>
-            )}
-            {node.midTurn && !node.injected && (
-              <p className="muted small hint">
-                Sent mid-turn. Forks of any later turn keep this message; it just can't anchor
-                a resume itself.
-              </p>
-            )}
+            {annotationError && <p className="error-text small hint">{annotationError}</p>}
 
             <div className="panel-actions">
               <button
                 className="primary"
                 title={
-                  node.injected
-                    ? "No transcript record to resume from"
-                    : "Get a command that resumes the session from this turn"
+                  node.forkBlocked ??
+                  "Create a new session holding the conversation up to and including this turn"
                 }
-                disabled={forking || node.injected}
-                onClick={async () => {
-                  setForking(true);
-                  setForkFor(node.id);
-                  try {
-                    setFork(await api.forkAt(meta.id, node.id));
-                  } catch (e) {
-                    setFork({ ok: false, error: String(e) });
-                  } finally {
-                    setForking(false);
-                  }
-                }}
+                disabled={forking || !!node.forkBlocked}
+                onClick={() => void doFork()}
               >
                 {forking ? "forking…" : "⑂ fork after this turn"}
               </button>
             </div>
+            {/* The provider decided this when it built the tree, from what the
+                harness can actually resume — say why rather than fail on click. */}
+            {node.forkBlocked && <p className="muted small hint">{node.forkBlocked}</p>}
 
             {forkResult &&
               (forkResult.ok ? (
                 <div className="fork-result">
+                  <p className="small">
+                    {opened?.ok
+                      ? "Forked and opened. It joins this tree as soon as it has a turn of its own."
+                      : "Forked into a new session. It joins this tree as soon as it has a turn of its own."}
+                  </p>
+                  {opened && !opened.ok && <p className="error-text small">{opened.error}</p>}
                   <code className="path fork-cmd">{forkResult.command}</code>
                   <div className="copy-row">
-                    <Copy value={forkResult.command} label="⑂ copy fork command" />
+                    {forkResult.open && <NativeButtons ref_={forkResult.open} onResult={setOpened} />}
+                    <Copy value={forkResult.command} label="⑂ copy resume command" />
                     <Copy value={forkResult.id} label="copy session id" />
                   </div>
-                  <p className="muted small hint">
-                    {forkResult.note ??
-                      "Continues from this turn as a new branch. Nothing is deleted."}
-                  </p>
+                  {forkResult.note && <p className="muted small hint">{forkResult.note}</p>}
                 </div>
               ) : (
                 <div className="fork-result error-text">{forkResult.error}</div>
@@ -225,7 +352,6 @@ export function NodePanel() {
                 }}
               />
             )}
-
           </section>
 
           {node.thinking && (
@@ -249,7 +375,7 @@ export function NodePanel() {
             <div className="prefix-toggle">
               <button
                 className="ghost"
-                title="Read the whole conversation from the root down to this turn"
+                title="Read the displayed turns from the root down to this one. The agent's own context also held tool results, files and instructions not shown here."
                 onClick={() => setPrefixFor(showPrefix ? null : node.id)}
               >
                 {showPrefix ? "show this turn only" : "view conversation up to here"}

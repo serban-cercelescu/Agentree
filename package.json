@@ -1,13 +1,16 @@
 {
   "name": "agentree",
   "private": true,
-  "version": "0.1.0",
-  "description": "Desktop app that draws your coding-agent conversations (Claude Code, OpenAI Codex CLI, GitHub Copilot CLI) as forkable trees",
+  "version": "0.2.0",
+  "description": "Draws your coding-agent conversations — Claude Code and OpenAI Codex (CLI or VS Code), GitHub Copilot CLI — as trees, forks included",
   "license": "MIT",
-  "author": "Serban Cercelescu",
+  "author": "Sadeeptha Bandara",
+  "contributors": [
+    "Serban Cercelescu (original author, https://github.com/serban-cercelescu/Agentree)"
+  ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/serban-cercelescu/Agentree.git"
+    "url": "https://github.com/Sadeeptha-B/Agentree.git"
   },
   "type": "module",
   "bin": {
@@ -23,12 +26,15 @@
     "dev": "concurrently -n vite,main,app -c cyan,yellow,magenta \"npm:dev:renderer\" \"npm:dev:main\" \"npm:dev:app\"",
     "dev:renderer": "vite",
     "dev:main": "node build-electron.mjs --watch",
-    "dev:app": "AGENTVIEW_DEV_URL=http://localhost:5173 electron .",
+    "dev:app": "node scripts/electron.mjs --dev",
     "build": "tsc -b && vite build && node build-electron.mjs",
     "build:vscode": "node build-vscode.mjs",
     "prepare": "node scripts/prepare.mjs",
-    "start": "electron .",
-    "typecheck": "tsc -b --force"
+    "start": "node scripts/electron.mjs",
+    "typecheck": "tsc -b --force && tsc -p vscode-ext --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "fixtures": "node test/fixtures/make-fixtures.mjs"
   },
   "dependencies": {
     "electron": "^43.2.0"
@@ -46,7 +52,11 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vite": "^6.0.5",
+    "vitest": "^3.2.4",
     "zustand": "^5.0.2"
   },
-  "main": "dist-electron/main.cjs"
+  "main": "dist-electron/main.cjs",
+  "allowScripts": {
+    "electron@43.2.0": true
+  }
 }

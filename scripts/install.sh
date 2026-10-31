@@ -1,7 +1,7 @@
 #!/bin/sh
 # Agentree installer / updater.
 #
-#   curl -fsSL https://raw.githubusercontent.com/serban-cercelescu/Agentree/main/scripts/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/Sadeeptha-B/Agentree/main/scripts/install.sh | sh
 #
 # Clones (or updates) the source into ~/.agentree/app, builds it, and installs
 # the `agentree` command globally via npm. Idempotent: re-running updates an
@@ -9,7 +9,7 @@
 # npm versions fail to reify a global git dependency with a prepare step.
 set -eu
 
-REPO_URL="https://github.com/serban-cercelescu/Agentree.git"
+REPO_URL="https://github.com/Sadeeptha-B/Agentree.git"
 APP_DIR="${AGENTREE_HOME:-$HOME/.agentree}/app"
 
 for tool in git node npm; do

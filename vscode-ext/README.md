@@ -1,66 +1,73 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/serban-cercelescu/Agentree/main/assets/logo-256.png" alt="Agentree" width="96" height="96">
+  <img src="https://raw.githubusercontent.com/Sadeeptha-B/Agentree/main/assets/logo-256.png" alt="Agentree" width="96" height="96">
 </p>
 
 <h1 align="center">Agentree</h1>
 
 <p align="center">
-  See your coding-agent conversations as trees. Fork them anywhere.
+  See your coding-agent conversations as trees.
 </p>
 
 ---
 
-<p align="center">
-  <img src="https://raw.githubusercontent.com/serban-cercelescu/Agentree/main/assets/screenshot.png" alt="Agentree showing a branched Claude Code session: the conversation tree on the left, the selected turn's details and fork command on the right" width="900">
-</p>
-
 **Agentree** reads the session files your coding agents already keep on disk
-and draws each conversation as an interactive tree — every prompt, reply, and
-branch, across all your projects, in one place. Run **Agentree: Open
-Conversation Trees** from the command palette and it finds your sessions
-automatically; harnesses that aren't installed are simply skipped.
+and draws each conversation as an interactive tree: every prompt, reply and
+branch, across all your projects. Run **Agentree: Open Conversation Trees**
+from the Command Palette.
 
-Select any turn and Agentree hands you a ready-to-paste command that resumes
-the conversation **from that exact point**, as a new branch. Explore an idea,
-rewind, try another path — without losing anything.
+Forked sessions are joined by shared-history evidence into a family tree.
+Claude rewinds and Codex prompt edits also appear as branches. Search fork
+names, inspect a path, annotate turns and hand a session back to its agent.
 
-Supported harnesses:
+Requires VS Code 1.101 or newer (for the zstd support Codex's compressed
+history needs).
 
-| Agent | Session store | Resume / fork |
-|-------|---------------|----------------|
-| **Claude Code** | `~/.claude/projects` | branches natively inside one session |
-| **OpenAI Codex CLI** | `~/.codex/sessions` | fork becomes a new session, drawn as one tree |
-| **GitHub Copilot CLI** | `~/.copilot/session-state` | fork becomes a new session, drawn as one tree |
+| Agent | History | Fork after a turn |
+|-------|-------|-------------------|
+| **Claude Code** (extension or CLI) | JSONL conversations and copied forks | new session in Claude Code's fork format |
+| **OpenAI Codex** (extension or CLI) | Plain/compressed rollout pages, forks and prompt edits | official `thread/fork`, whole turns only |
+| **GitHub Copilot CLI** | Session event logs | copy-truncated session; resume command |
 
-## Features
+VS Code Copilot Chat is not supported. See the
+[guide's limitations](https://github.com/Sadeeptha-B/Agentree/blob/main/docs/user-guide.md#limitations).
 
-- **One list, three harnesses** — every conversation on your machine, newest
-  first, filterable by project directory, with live updates as agents run.
-- **Tree view** — branches are first-class: long linear runs collapse into
-  compact chains, branch points stay visible, and the current tip is
-  highlighted.
-- **Fork after any turn** — one click produces the exact CLI command that
-  continues the conversation from that turn as a new branch. Nothing is
-  modified or deleted; forks are strictly additive.
-- **Read the conversation** — full Markdown rendering of any turn, its
-  thinking and tool calls, plus a "view conversation up to here" reader for
-  the whole prefix.
-- **Annotate** — star turns, label branches, and mark dead ends (dimming the
-  whole abandoned subtree). Annotations live in a sidecar, never in your
-  transcripts.
-- **Token overlays** — per-turn context size, prompt cost, and cache-hit
-  rates, straight from the transcripts.
+## Use
+
+Install a built `.vsix` with **Extensions: Install from VSIX**, reload if
+prompted, then run **Agentree: Open Conversation Trees** from the Command Palette.
+
+- **Welcome screen:** agent/directory filters, fork-name search, activity sort
+  and health rows. The gear opens settings shared with the desktop app; a
+  history location set there is also used for forks and terminal resume.
+- **Tree:** drag to pan, wheel to zoom, click a dotted `n` chain to expand it.
+  Long-dashed edges enter a fork or an edited branch.
+- **Panel:** for the session shown in its Session block you get **open in
+  Claude Code / Codex** and **resume in terminal** (both continue the
+  session's current path), **⑂ fork after this turn** (opens the fork in the
+  chat panel; the way to continue any other branch), and star / label /
+  dead-end annotations. A turn that can't be forked says why.
+
+Shared history belongs to every session that copied it. Open a fork by its
+name in the list and the panel acts on that fork across all of its history,
+shared turns included; on a shared turn, a drop-down picks which session to
+act on. Resume in terminal uses the history location set in Agentree's
+settings; the chat panel uses its own extension's. Native opening after a
+fork is configurable. The
+[user guide](https://github.com/Sadeeptha-B/Agentree/blob/main/docs/user-guide.md)
+owns workflows, settings, paths and troubleshooting.
 
 ## Privacy
 
-Agentree runs entirely on your machine. No API keys, no accounts, no
-telemetry, no network requests. Your transcripts are never modified:
-annotations go to `~/.agentree/`, and forking (for harnesses that need it)
-only ever *creates* a new session file.
+Everything runs locally, with no network requests. Your transcripts are never
+modified: annotations go to `~/.agentree/`, a Claude fork creates a new file,
+Codex makes Codex forks itself, and Copilot forks copy a new session directory.
+Agentree sends no telemetry and needs no API keys of its own; the vendor agent
+you resume uses its own runtime/account.
 
-## Also available as a desktop app
+## Build
 
-The same app ships as a standalone Electron build — see the
-[Agentree repository](https://github.com/serban-cercelescu/Agentree) for
-installation. This extension is built from the same sources: from the repo
-root, `npm run build:vscode`, then `npm run package` in `vscode-ext/`.
+The [repository README](https://github.com/Sadeeptha-B/Agentree#using-it-in-vs-code)
+owns source installation. [AGENTS.md](https://github.com/Sadeeptha-B/Agentree/blob/main/AGENTS.md)
+has build/package and development-host instructions; the
+[design notes](https://github.com/Sadeeptha-B/Agentree/blob/main/docs/design.md)
+explain the shared renderer/providers and runtime requirements.

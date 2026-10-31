@@ -1,0 +1,6 @@
+{"timestamp":"2026-10-01T10:00:00.000Z","type":"session_meta","payload":{"id":"01800000-0000-7000-8000-000000000003","cwd":"C:\\work\\codex-demo","cli_version":"0.164.0-alpha.11.1","source":"vscode","originator":"codex_vscode","history_mode":"legacy"}}
+{"timestamp":"2026-10-01T10:01:00.000Z","type":"event_msg","payload":{"type":"user_message","message":"Mixed question"}}
+{"timestamp":"2026-10-01T10:02:00.000Z","type":"event_msg","payload":{"type":"item_completed","turn_id":"01900000-0000-7000-8000-0000000a0030","item":{"type":"Extension","id":"ext-1","kind":"open_file"}}}
+{"timestamp":"2026-10-01T10:03:00.000Z","type":"event_msg","payload":{"type":"agent_message","message":"Mixed answer."}}
+{"timestamp":"2026-10-01T10:04:00.000Z","type":"event_msg","payload":{"type":"user_message","message":"Mixed follow-up"}}
+{"timestamp":"2026-10-01T10:05:00.000Z","type":"event_msg","payload":{"type":"agent_message","message":"Mixed second answer."}}

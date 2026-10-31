@@ -43,7 +43,13 @@ const api: AgentreeApi = {
   listSessions: () => invoke("listSessions"),
   getSession: (id) => invoke("getSession", id),
   patchNode: (sessionId, nodeId, patch) => invoke("patchNode", sessionId, nodeId, patch),
-  forkAt: (sessionId, nodeId) => invoke("forkAt", sessionId, nodeId),
+  forkAt: (sessionId, point) => invoke("forkAt", sessionId, point),
+  providerHealth: () => invoke("providerHealth"),
+  getSettings: () => invoke("getSettings"),
+  setSettings: (patch) => invoke("setSettings", patch),
+  host: "vscode",
+  openNative: (ref) => invoke("openNative", ref),
+  resumeInTerminal: (ref) => invoke("resumeInTerminal", ref),
 
   // The launch-time GitHub build check is an Electron-app concern; the
   // extension updates through VS Code itself.
