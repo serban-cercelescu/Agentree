@@ -34,7 +34,8 @@
     "typecheck": "tsc -b --force && tsc -p vscode-ext --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "fixtures": "node test/fixtures/make-fixtures.mjs"
+    "fixtures": "node test/fixtures/make-fixtures.mjs",
+    "release:prepare": "node scripts/release/prepare.mjs"
   },
   "dependencies": {
     "electron": "^43.2.0"
@@ -45,6 +46,8 @@
     "@types/react-dom": "^18.3.5",
     "@types/vscode": "^1.125.0",
     "@vitejs/plugin-react": "^4.3.4",
+    "@vscode/vsce": "^4.0.0",
+    "ajv": "^8.20.0",
     "concurrently": "^9.1.0",
     "esbuild": "^0.28.1",
     "react": "^18.3.1",

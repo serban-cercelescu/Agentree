@@ -1,2 +1,5 @@
 # Transcript fixtures are byte-exact samples of on-disk formats.
 * -text
+# The generator is source, stored as it always was: its CRLF is not trailing
+# whitespace to `git diff --check`.
+make-fixtures.mjs whitespace=cr-at-eol

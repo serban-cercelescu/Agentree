@@ -29,6 +29,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
 const common = {
   bundle: true,
+  // electron/version.ts: the version, from package.json alone.
+  define: { __AGENTREE_VERSION__: JSON.stringify(JSON.parse(readFileSync("package.json", "utf8")).version) },
   platform: "node",
   target: "node20",
   format: "cjs",

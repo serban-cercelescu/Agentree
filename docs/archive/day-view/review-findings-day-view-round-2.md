@@ -36,7 +36,7 @@
 <a id="dv2-1"></a>
 
 1. [P2] A live day refresh still loses the selected endpoint.
-   [store.ts (line 272)](/C:/Users/SadeepthaBandara/source/repos/Agentree/src/store.ts:272)
+   [store.ts (line 272)](../../../src/store.ts#L272)
    loadDay preserves selection solely by turnKey, which contains the group’s head ID. The new NodeRef is used when opening Tree, but is discarded when refreshing Day itself.
    I reproduced this through the built worker and renderer store on copied fixtures:
    - Selected ep-a1 displayed “First prose. Later prose.”, ending at ep-a2.
@@ -48,7 +48,7 @@
 <a id="dv2-2"></a>
 
 2. [P2] Wheel zoom also scrolls the outer pane.
-   [DayView.tsx (line 170)](/C:/Users/SadeepthaBandara/source/repos/Agentree/src/components/DayView.tsx:170)
+   [DayView.tsx (line 170)](../../../src/components/DayView.tsx#L170)
    React registers its wheel listener as passive in the installed version, so this handler’s preventDefault() cannot cancel browser scrolling. The new outer-pane scrolling makes that observable.
    At 820×600, one browser-native CDP wheel event changed both:
    - Timeline scale: approximately 0.886 → 0.708
@@ -58,7 +58,7 @@
 <a id="dv2-3"></a>
 
 3. [P2] Day keyboard shortcuts operate behind Settings and can dismiss it indirectly.
-   [DayView.tsx (line 138)](/C:/Users/SadeepthaBandara/source/repos/Agentree/src/components/DayView.tsx:138)
+   [DayView.tsx (line 138)](../../../src/components/DayView.tsx#L138)
    The window-level handler remains active while Settings is open. It excludes input elements, but does not check settingsOpen or whether the event belongs to the dialog.
    Reproduced in Electron:
    - Select a day turn and open Settings.
@@ -69,7 +69,7 @@
 <a id="dv2-4"></a>
 
 4. [P2] Clicking a chat selects its latest-starting turn, rather than its latest-ending turn.
-   [day-layout.ts (line 314)](/C:/Users/SadeepthaBandara/source/repos/Agentree/src/day-layout.ts:314)
+   [day-layout.ts (line 314)](../../../src/day-layout.ts#L314)
    laneLatest returns the last entry in the start-time ordering. This violates the existing endOf contract and can disagree with the same chat’s Tree tip.
    Using the branch pattern already covered by test/endpoints.test.ts:
    - Answer A starts at 10:01 and continues until 10:03.
@@ -80,7 +80,7 @@
 <a id="dv2-5"></a>
 
 5. [P2] Turns spanning midnight are missing from the next day’s busy-time context.
-   [registry.ts (line 268)](/C:/Users/SadeepthaBandara/source/repos/Agentree/electron/registry.ts:268)
+   [registry.ts (line 268)](../../../electron/registry.ts#L268)
    The updated idle calculation works for projected turns, but the projection completely excludes turns that started before the day—even when their endedAt falls inside it.
    I reproduced two synthetic sessions:
    - A reply runs from 23:55 yesterday until 00:30.
@@ -89,7 +89,7 @@
    Day displays a 29-minute idle break, although something was running until one minute before the prompt.
    Carry overlapping activity intervals into the day projection’s layout context. Their marks can remain assigned to their starting day, preserving the documented display rule.
 
-There is also a P3 documentation issue in the current uncommitted move: the report now exists under docs/archive/day-view/, while references in [design.md (line 1012)](/C:/Users/SadeepthaBandara/source/repos/Agentree/docs/design.md:1012) and the modernization archive README still target the deleted location. Update those references when completing the move.
+There is also a P3 documentation issue in the current uncommitted move: the report now exists under docs/archive/day-view/, while references in [design.md (line 1012)](../../../docs/design.md#L1012) and the modernization archive README still target the deleted location. Update those references when completing the move.
 
 The architecture remains appropriate for Agentree. Worker-owned projection, provider-supplied revisions, action-level read-only checks, and the shared selection resolver fit the existing boundaries. I found no new store-write bypass. The remaining model gaps concern applying selection identity consistently across every refresh and retaining enough interval context to calculate inactivity accurately.
 

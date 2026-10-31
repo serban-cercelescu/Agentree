@@ -7,3 +7,4 @@ dist-electron/
 TODO.md
 vscode-ext/*.vsix
 vscode-ext/logo.png
+vscode-ext/LICENSE

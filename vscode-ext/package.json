@@ -49,6 +49,6 @@
   },
   "scripts": {
     "build": "node ../build-vscode.mjs",
-    "package": "npx --yes @vscode/vsce package --no-dependencies"
+    "package": "vsce package --no-dependencies"
   }
 }

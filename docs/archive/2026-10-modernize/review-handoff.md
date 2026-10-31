@@ -40,7 +40,7 @@ Every factual claim below carries one of these tags:
 
 | | |
 |---|---|
-| Repo | `C:\Users\SadeepthaBandara\source\repos\Agentree`, a fork of `serban-cercelescu/Agentree` (`origin` = `Sadeeptha-B/Agentree`, `upstream` = serban) |
+| Repo | A local clone of `Sadeeptha-B/Agentree`, a fork of `serban-cercelescu/Agentree` (`origin` = `Sadeeptha-B/Agentree`, `upstream` = serban) |
 | Owner's setup | Windows 11 and VS Code 1.143.1 (Electron 43). Claude Code extension 2.1.310 (CLI 2.1.296), Codex extension `openai.chatgpt` 26.1021 (codex-cli 0.162.1). The owner works in the VS Code chat panels and branches by forking from a message. |
 | Goal | Show Claude and Codex conversations as trees, including the forks made in the VS Code extensions. Fork at any turn and hand off to the native extension. Work on Windows, and fail loudly when on-disk formats change. Copilot Chat is out of scope (a later phase). |
 | Branch | `modernize`; nothing has been pushed |
@@ -561,7 +561,7 @@ unset.
 ## 6. Side effects on the owner's machine (made during verification)
 
 - Claude session **`a85dba11-91f0-4b5d-9d19-ef60dc6d7302`**: an Agentree fork of
-  `9c9017e6`, written to `~/.claude/projects/c--Users-SadeepthaBandara-source-repos-map/`.
+  `9c9017e6`, written to the `map` project's folder under `~/.claude/projects/`.
   One real `claude -p` turn was spent on it. A `~/.agentree/lineage.json` entry
   was written for it.
 - Codex thread **`01a17c6d-c757-7562-9886-3e9876e35c5f`**: a fork of

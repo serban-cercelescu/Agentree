@@ -8,12 +8,14 @@
 //
 // The output is committed, so a format regression shows up as a test failure
 // rather than depending on whatever happens to be in the developer's home dir.
+// test/fixtures.test.ts holds it equal to this generator, by writing a copy to
+// the directory given as an argument.
 import fs from "node:fs";
 import path from "node:path";
 import zlib from "node:zlib";
 import { fileURLToPath } from "node:url";
 
-const ROOT = path.dirname(fileURLToPath(import.meta.url));
+const ROOT = process.argv[2] ? path.resolve(process.argv[2]) : path.dirname(fileURLToPath(import.meta.url));
 const jsonl = (recs) => recs.map((r) => JSON.stringify(r)).join("\n") + "\n";
 const write = (rel, recs, { zst = false } = {}) => {
   const file = path.join(ROOT, rel);

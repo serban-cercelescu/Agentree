@@ -621,9 +621,16 @@ describe("Claude parentage evidence", () => {
     const dir = projectDir("c--work-rename");
     fs.mkdirSync(dir, { recursive: true });
     const src = path.join(claudeRoot, "rename-src", "c--work-rename");
+    let born = 0;
     for (const id of [P3, F3, G3]) {
-      fs.copyFileSync(path.join(src, `${id}.jsonl`), path.join(dir, `${id}.jsonl`));
-      await new Promise((r) => setTimeout(r, 1100));
+      // Past the last file's time on the clock file times come from, not a
+      // fixed sleep: a VM's wall clock can step back while a timer runs.
+      while (Date.now() < born + 1100) await new Promise((r) => setTimeout(r, 25));
+      // Written, not copied: a harness writes a new file, and macOS's copy
+      // keeps the source's creation time, which would make all three one batch.
+      const file = path.join(dir, `${id}.jsonl`);
+      fs.writeFileSync(file, fs.readFileSync(path.join(src, `${id}.jsonl`)));
+      born = fs.statSync(file).birthtimeMs;
     }
     const d = loadSession(G3)!;
     expectTree(d);

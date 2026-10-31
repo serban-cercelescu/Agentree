@@ -27,6 +27,8 @@
     "shared",
     "vite.config.ts",
     "build-electron.mjs",
+    "scripts/release",
+    "scripts/upstream",
     "test"
   ]
 }

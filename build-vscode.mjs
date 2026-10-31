@@ -6,7 +6,7 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
 import react from "@vitejs/plugin-react";
-import { copyFileSync, rmSync } from "node:fs";
+import { copyFileSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 
 const OUT = "vscode-ext/dist";
@@ -43,6 +43,8 @@ await esbuild({
   outdir: OUT,
   outExtension: { ".js": ".cjs" },
   external: ["vscode"],
+  // electron/version.ts: the version, from package.json alone.
+  define: { __AGENTREE_VERSION__: JSON.stringify(JSON.parse(readFileSync("package.json", "utf8")).version) },
   sourcemap: true,
   logLevel: "info",
 });
@@ -60,3 +62,5 @@ await esbuild({
 
 // vsce requires the marketplace icon to live inside the extension folder.
 copyFileSync("assets/logo-256.png", "vscode-ext/logo.png");
+// The MIT notice travels with every copy of the package.
+copyFileSync("LICENSE", "vscode-ext/LICENSE");
