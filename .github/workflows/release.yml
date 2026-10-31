@@ -1,0 +1,152 @@
+# Releases come from a release pull request (`npm run release:prepare -- 1.2.3`).
+# When its merge changes package.json's version on main, this workflow runs
+# CI again on the merge commit, packages the extension, attests it, and makes
+# a DRAFT GitHub release targeting that commit. Publishing the draft creates
+# the tag v1.2.3; only repository admins can (.github/rulesets/release-tags.json).
+# Nothing is published to the VS Code Marketplace or Open VSX (see
+# docs/upstream.md, "Releases and distribution").
+#
+# Packaging runs dependencies' code, so it has a read-only token and passes
+# its result on as an artifact. The job with write access runs nothing
+# installed: job permissions reach every step (id-token: write puts its
+# request token in each step's environment), so narrowing a step's env
+# wouldn't be enough.
+#
+# Dry run: start this workflow by hand (Actions → Release → Run workflow) on
+# any branch, a release branch included. It runs the same checks and
+# packaging for that branch's version, keeps the .vsix and SHA256SUMS as an
+# artifact, and previews the release notes, but attests nothing and creates
+# no release.
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths: [package.json]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+  # Every run waits its turn. By default a new run replaces the pending one,
+  # and a dependency update could then cancel a version bump's draft.
+  queue: max
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      mode: ${{ steps.plan.outputs.mode }}
+      version: ${{ steps.plan.outputs.version }}
+      tag: ${{ steps.plan.outputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+      # release, dry-run, or none (e.g. a dependency update that left the
+      # version alone). See scripts/release/plan.mjs.
+      - id: plan
+        env:
+          EVENT: ${{ github.event_name }}
+          BEFORE: ${{ github.event.before }}
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release/plan.mjs
+
+  checks:
+    needs: plan
+    if: needs.plan.outputs.mode != 'none'
+    uses: ./.github/workflows/ci.yml
+
+  package:
+    name: Package
+    needs: [plan, checks]
+    if: needs.plan.outputs.mode != 'none'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+          # No dependency cache: a release builds from the lockfile alone.
+      - name: One version everywhere
+        run: node scripts/check-version.mjs
+      - run: npm ci
+      - run: npm run build:vscode
+      - name: vsce package
+        working-directory: vscode-ext
+        run: npm run package
+      - name: Checksums
+        working-directory: vscode-ext
+        run: sha256sum agentree-*.vsix | tee SHA256SUMS
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: agentree-release
+          path: |
+            vscode-ext/agentree-*.vsix
+            vscode-ext/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: ${{ needs.plan.outputs.mode == 'release' && 'Draft release' || 'Dry run' }}
+    needs: [plan, package]
+    if: needs.plan.outputs.mode != 'none'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write # the draft release, and the dry run's notes preview
+      id-token: write # provenance attestation
+      attestations: write
+    env:
+      MODE: ${{ needs.plan.outputs.mode }}
+      TAG: ${{ needs.plan.outputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      # No checkout and no install: this job only handles the package.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: agentree-release
+          path: package
+
+      - name: Release notes preview (dry run)
+        if: env.MODE == 'dry-run'
+        run: |
+          {
+            echo "## Dry run: what $TAG would release"
+            echo
+            echo "Package: \`$(cat package/SHA256SUMS)\`"
+            echo
+            gh api -X POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+              -f tag_name="$TAG" -f target_commitish="$GITHUB_SHA" --jq .body
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: env.MODE == 'release'
+        with:
+          subject-path: package/agentree-*.vsix
+      # A draft has no tag yet: publishing it creates TAG at this commit.
+      - name: Draft release
+        if: env.MODE == 'release'
+        run: |
+          # Drafts are invisible to the plan's read-only token: a re-run must
+          # not make a second one.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "A release $TAG already exists (perhaps a draft from an earlier run)."; exit 1
+          fi
+          gh release create "$TAG" package/agentree-*.vsix package/SHA256SUMS \
+            --draft --target "$GITHUB_SHA" --title "Agentree $TAG" --generate-notes
+          echo "Drafted $TAG: $(gh release view "$TAG" --json url --jq .url)" >> "$GITHUB_STEP_SUMMARY"
