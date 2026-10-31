@@ -102,6 +102,7 @@ switch and environment override are documented in the
 - [AGENTS.md](AGENTS.md): commands, code map, safe fixture homes and required checks.
 - [Design notes](docs/design.md): architecture, identities, provider research,
   persistence and the reasons behind consequential decisions.
+- [Upstream compatibility](docs/upstream.md): keeping up with the agents' formats, CI and releases.
 - [Remaining work](docs/roadmap.md): verification gaps, durability follow-ups and deferred features.
 - [Historical record](docs/archive/2026-10-modernize/README.md): retained handoffs,
   reviews/resolutions, completed roadmap and documentation proposal.

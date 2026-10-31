@@ -45,6 +45,10 @@ npm run build:vscode     # extension, shared webview and worker
 npm run fixtures         # regenerate committed fixtures after editing the generator
 npm run dev              # Electron hot reload
 npm run test:watch       # focused test iteration
+node scripts/check-links.mjs          # relative Markdown links and anchors (CI)
+node scripts/check-version.mjs        # one version in every place that states it (CI, release)
+npm run release:prepare -- X.Y.Z      # open a release pull request (docs/upstream.md)
+node scripts/upstream/watch.mjs       # vendor releases since review, and their contracts
 ```
 
 For extension development, F5 from the root runs the configured build task and launches an Extension Development Host. Rebuild/reload after changes. Package with `npm run package` inside `vscode-ext/`; VS Code installs the resulting `.vsix`. Regenerate icons with `scripts/make-icon.py` when changing the source logo.
@@ -52,6 +56,8 @@ For extension development, F5 from the root runs the configured build task and l
 To see a renderer change in the running desktop app (screenshots, clicks, keys), use the [run-desktop skill](.claude/skills/run-desktop/SKILL.md): `npm run build`, then pipe commands to its driver. It runs on a temp copy of the fixtures by default; its `real` mode reads your stores with a scratch Agentree home and `AGENTREE_READ_ONLY_STORES=1`, under which the app refuses every fork, chat-panel open and terminal resume. Set that variable for any automated run against real stores. A desktop screenshot is not a VS Code webview check.
 
 For implementation changes, run relevant tests and typecheck; verify both production builds when shared code, runtime boundaries, entry points or bundling change. For documentation-only work, check moved links/anchors and commands against package scripts. A prose edit does not require an unrelated full test/build run.
+
+CI (`.github/workflows/`) runs the checks above on Ubuntu and Windows on Node 22.15.0 (VS Code 1.101's bundled Node, the floor) and 24, and on macOS on 24; a release is a pull request from `npm run release:prepare`, whose merge makes a draft GitHub release only; publishing it creates the tag, which only admins can. The Release workflow run by hand is a dry run. A weekly upstream watch reports vendor releases and contract breaks in one `upstream` issue, and fails on a break or on anything it could not determine. [Upstream compatibility](docs/upstream.md) owns that process, the triage of an upstream change, and the read-only audit of real stores to run around parser changes. Don't publish to the Marketplace or Open VSX without the owner.
 
 When a harness changes format, add a sanitized synthetic fixture before changing the parser. Assert exact ancestry, member endpoints and action targets as well as unique IDs/no dangling parents. Counts and structural validity alone do not prove semantic correctness. Fixture coverage and vendor canaries are described in the [design notes](docs/design.md#tests).
 
@@ -61,6 +67,6 @@ Report what was actually checked: fixture tests, shipped-source inspection, visu
 
 ## Documentation maintenance
 
-Each subject has one authoritative explanation: README for setup, this file for working instructions, the user guide for tasks/configuration, and design notes for engineering reasoning. Update the relevant explanation when a behavior or contract changes; routine code movement need not trigger a prose rewrite. Split documents only when navigation or independent maintenance demonstrates a need.
+Each subject has one authoritative explanation: README for setup, this file for working instructions, the user guide for tasks/configuration, design notes for engineering reasoning, and [upstream compatibility](docs/upstream.md) for tracking vendor changes, CI and releases. Update the relevant explanation when a behavior or contract changes; routine code movement need not trigger a prose rewrite. Split documents only when navigation or independent maintenance demonstrates a need.
 
-Keep history in the archives under `docs/archive/`, one per effort (the [October 2026 modernization](docs/archive/2026-10-modernize/README.md), the [day view](docs/archive/day-view/README.md)), with original evidence, decisions and resolution status. Archived plans do not override current instructions. A review's report keeps its original findings; its resolution is recorded at the top, as for rounds 1–4.
+Keep history in the archives under `docs/archive/`, one per effort (the [October 2026 modernization](docs/archive/2026-10-modernize/README.md), the [day view](docs/archive/day-view/README.md), [CI and releases](docs/archive/ci/README.md)), with original evidence, decisions and resolution status. Archived plans do not override current instructions. A review's report keeps its original findings; its resolution is recorded at the top, as for rounds 1–4.
